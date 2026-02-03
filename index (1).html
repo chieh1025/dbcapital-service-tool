@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>股務小幫手</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    
+    <style>
+        /* 列印專用樣式表 */
+        @media print {
+            .no-print { display: none !important; }
+            body { background: white !important; padding: 0 !important; }
+            .card { 
+                box-shadow: none !important; 
+                border: none !important; 
+                padding: 0 !important;
+                margin: 0 !important;
+                width: 100% !important;
+                max-width: 100% !important;
+            }
+            .print-only { display: block !important; }
+            .print-border { border: 2px solid #000 !important; }
+            #print-section {
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                padding: 20px;
+            }
+            /* 列印時強制字體大小調整，確保清晰 */
+            .print-text-lg { font-size: 14pt !important; }
+            .print-text-xl { font-size: 16pt !important; }
+            .print-text-2xl { font-size: 20pt !important; }
+        }
+        
+        .fade-in { animation: fadeIn 0.5s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        /* Accordion transition */
+        .accordion-content {
+            transition: max-height 0.3s ease-out, opacity 0.3s ease-out;
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+        }
+        .accordion-content.expanded {
+            max-height: 800px; /* 足夠大的高度 */
+            opacity: 1;
+        }
+
+        /* 簽名板樣式 */
+        canvas.signature-pad {
+            border: 2px dashed #cbd5e1;
+            border-radius: 0.5rem;
+            cursor: crosshair;
+            background: #fff;
+            width: 100%;
+            touch-action: none; /* 防止手機滑動頁面 */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-slate-800 font-sans min-h-screen flex items-center justify-center py-10">
+    <div id="root" class="w-full max-w-4xl px-4"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useEffect, useRef } = React;
+
+        // ==========================================
+        // ★★★ CONFIG 全域設定區 ★★★
+        // ==========================================
+        const CONFIG = {
+            systemName: "股務小幫手",
+            companyName: "達飆資本",
+            allowUserEditParams: false,
+            
+            // ★★★ n8n Webhook URL (使用 Cloudflare Worker) ★★★
+            n8nApiUrl: 'https://n8n-dbcapital-tool.chieh1025.workers.dev/', 
+            
+            forceFullOffset: true,
+            
+            tabs: {
+                showCalculation: true,
+                showDocs: true
+            },
+
+            tax: { rate: 0.0211, threshold: 20000 },
+
+            // ★★★ 股份種類定義 (對應 n8n 回傳的 key) ★★★
+            shareTypes: [
+                { id: 'voting_shares', name: '普通股/甲種特別股' },
+                { id: 'preferred_yi', name: '乙種特別股' }
+            ],
+
+            dividends: [
+                { id: 'div1', label: 'FY2025股利', amount: 55000 },
+                { id: 'div2', label: '2026H1股利', amount: 15000 }
+            ],
+
+            subscriptionPrice: 115000,
+
+            // ★★★ 股東戶號清單 (正式版：01~38，排除跳號) ★★★
+            shareholderOptions: [
+                { id: "01", label: "01 蔡**" },
+                { id: "02", label: "02 郁*******" },
+                { id: "03", label: "03 楊**" },
+                { id: "04", label: "04 張**" },
+                { id: "05", label: "05 楊**" },
+                { id: "06", label: "06 崴*******" },
+                { id: "08", label: "08 涂**" },
+                { id: "09", label: "09 邱**" },
+                { id: "10", label: "10 林*" },
+                { id: "12", label: "12 茗*****" },
+                { id: "13", label: "13 蔡**" },
+                { id: "14", label: "14 王**" },
+                { id: "15", label: "15 郭**" },
+                { id: "16", label: "16 廖**" },
+                { id: "18", label: "18 潘**" },
+                { id: "19", label: "19 曾**" },
+                { id: "20", label: "20 展***********" },
+                { id: "21", label: "21 比*******" },
+                { id: "22", label: "22 陳**" },
+                { id: "23", label: "23 蕭**" },
+                { id: "25", label: "25 謝**" },
+                { id: "26", label: "26 金********" },
+                { id: "27", label: "27 陳**" },
+                { id: "28", label: "28 福*******" },
+                { id: "29", label: "29 邱**" },
+                { id: "30", label: "30 賴**" },
+                { id: "31", label: "31 林**" },
+                { id: "32", label: "32 許**" },
+                { id: "33", label: "33 歐********" },
+                { id: "34", label: "34 零*******" },
+                { id: "35", label: "35 默********" },
+                { id: "36", label: "36 林**" },
+                { id: "37", label: "37 金*******" },
+                { id: "38", label: "38 貝*********" }
+            ],
+
+            documents: [
+                { id: "doc1", title: "增資認購意願書" },
+                { id: "doc2", title: "股東個資同意書 (預留)" },
+                { id: "doc3", title: "放棄認購聲明書 (預留)" }
+            ]
+        };
+
+        // --- 輔助函式 ---
+        const formatMoney = (num) => new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', minimumFractionDigits: 0 }).format(num);
+        const formatInput = (val) => {
+            if (val === '' || val === undefined || val === null) return '';
+            const str = val.toString();
+            const parts = str.split('.');
+            parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+            return parts.join('.');
+        };
+
+        // ==========================================
+        // ★★★ 簽名板元件 ★★★
+        // ==========================================
+        function SignatureCanvas({ onSave, onClear }) {
+            const canvasRef = useRef(null);
+            const [isDrawing, setIsDrawing] = useState(false);
+
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                if(!canvas) return;
+                const ratio = Math.max(window.devicePixelRatio || 1, 1);
+                canvas.width = canvas.offsetWidth * ratio;
+                canvas.height = canvas.offsetHeight * ratio;
+                canvas.getContext("2d").scale(ratio, ratio);
+                const ctx = canvas.getContext('2d');
+                ctx.strokeStyle = "#000";
+                ctx.lineWidth = 2;
+                ctx.lineCap = "round";
+            }, []);
+
+            const getPos = (e) => {
+                const canvas = canvasRef.current;
+                const rect = canvas.getBoundingClientRect();
+                const x = (e.clientX || e.touches[0].clientX) - rect.left;
+                const y = (e.clientY || e.touches[0].clientY) - rect.top;
+                return { x, y };
+            };
+
+            const startDrawing = (e) => {
+                e.preventDefault(); 
+                setIsDrawing(true);
+                const { x, y } = getPos(e);
+                const ctx = canvasRef.current.getContext('2d');
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+            };
+
+            const draw = (e) => {
+                if (!isDrawing) return;
+                e.preventDefault();
+                const { x, y } = getPos(e);
+                const ctx = canvasRef.current.getContext('2d');
+                ctx.lineTo(x, y);
+                ctx.stroke();
+            };
+
+            const stopDrawing = () => {
+                if(isDrawing) {
+                    setIsDrawing(false);
+                    if (onSave) onSave(canvasRef.current.toDataURL());
+                }
+            };
+
+            const clear = () => {
+                const canvas = canvasRef.current;
+                const ctx = canvas.getContext('2d');
+                ctx.clearRect(0, 0, canvas.width, canvas.height); 
+                ctx.beginPath(); 
+                if (onClear) onClear();
+            };
+
+            return (
+                <div className="relative">
+                    <canvas 
+                        ref={canvasRef}
+                        className="signature-pad h-48 w-full block"
+                        onMouseDown={startDrawing}
+                        onMouseMove={draw}
+                        onMouseUp={stopDrawing}
+                        onMouseLeave={stopDrawing}
+                        onTouchStart={startDrawing}
+                        onTouchMove={draw}
+                        onTouchEnd={stopDrawing}
+                    />
+                    <button onClick={clear} className="absolute top-2 right-2 text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-gray-600">
+                        <i className="fas fa-eraser mr-1"></i>清除
+                    </button>
+                </div>
+            );
+        }
+
+        // ==========================================
+        // ★★★ 文件渲染元件 (A4 紙張樣式) ★★★
+        // ==========================================
+        function DocumentPreview({ docId, data, signatureImg }) {
+            const date = new Date();
+            const sharesDetail = CONFIG.shareTypes.map(type => {
+                const count = data.sharesMap?.[type.id] || 0;
+                return count > 0 ? `${type.name} ${formatInput(count)} 股` : null;
+            }).filter(Boolean).join('、');
+
+            return (
+                <div id={`doc-preview-${docId}`} className="bg-white p-10 border border-slate-300 shadow-sm mx-auto text-slate-900 leading-relaxed relative" style={{ width: '100%', maxWidth: '800px', minHeight: '800px' }}>
+                    <div className="text-center mb-8 border-b-2 border-slate-800 pb-4">
+                        <h2 className="text-2xl font-bold">{CONFIG.companyName}</h2>
+                        <h3 className="text-xl font-bold mt-2">{CONFIG.documents.find(d => d.id === docId)?.title || "文件"}</h3>
+                        <p className="text-sm text-slate-500 mt-1">文件編號: 2025-{docId.toUpperCase()}-{data.shareholderId || 'XXX'}</p>
+                    </div>
+
+                    {docId === 'doc1' && (
+                        <div className="space-y-6 text-base">
+                            <p><strong>立書人 (股東姓名)：</strong><u>&nbsp;&nbsp;{data.shareholderName || '____________'}&nbsp;&nbsp;</u><br/><strong>股東戶號：</strong><u>&nbsp;&nbsp;{data.shareholderId || '____________'}&nbsp;&nbsp;</u></p>
+                            <p>茲確認本人持有貴公司股票共計 <strong>{formatInput(data.totalShares) || '0'}</strong> 股{sharesDetail && <span className="text-sm text-slate-600"> ({sharesDetail})</span>}，並同意參與貴公司 114 年度現金增資計畫。</p>
+                            <table className="w-full border-collapse border border-slate-400 my-4 text-sm">
+                                <thead><tr className="bg-slate-100"><th className="border border-slate-400 p-2">項目</th><th className="border border-slate-400 p-2">內容</th><th className="border border-slate-400 p-2">金額/股數</th></tr></thead>
+                                <tbody>
+                                    <tr><td className="border border-slate-400 p-2">現金股利抵繳</td><td className="border border-slate-400 p-2">同意以現金股利全額/部分抵充股款</td><td className="border border-slate-400 p-2">{formatMoney(data.offsetCost || 0)}</td></tr>
+                                    <tr><td className="border border-slate-400 p-2">現金認購</td><td className="border border-slate-400 p-2">額外匯款認購股數</td><td className="border border-slate-400 p-2">{formatMoney(data.extraCost || 0)}</td></tr>
+                                    <tr className="bg-slate-50 font-bold"><td className="border border-slate-400 p-2" colSpan="2">本次增資認購總股數</td><td className="border border-slate-400 p-2 text-blue-600">{formatInput(data.totalNewShares || 0)} 股</td></tr>
+                                </tbody>
+                            </table>
+                            <p>本人瞭解並同意，上述認購款項若未於繳款期限內完成繳納 (含股利抵繳確認)，視同放棄本次認購權利。</p>
+                            <div className="mt-12 pt-8">
+                                <div className="flex justify-between items-end">
+                                    <div className="w-1/2">
+                                        <p className="mb-2 font-bold">股東簽章：</p>
+                                        <div className="h-24 border-b border-slate-400 relative">
+                                            {signatureImg ? <img src={signatureImg} className="h-full absolute bottom-0 left-0" alt="簽名" /> : <span className="text-slate-300 text-sm absolute bottom-2">請在此簽名或蓋章</span>}
+                                        </div>
+                                    </div>
+                                    <div className="text-right"><p>中華民國 &nbsp;{date.getFullYear()-1911}&nbsp; 年 &nbsp;{date.getMonth()+1}&nbsp; 月 &nbsp;{date.getDate()}&nbsp; 日</p></div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {(docId === 'doc2' || docId === 'doc3') && <div className="text-center py-20 text-slate-400"><i className="fas fa-file-contract text-6xl mb-4"></i><p>此文件範本尚未啟用</p></div>}
+                    <div className="absolute bottom-4 left-0 w-full text-center text-xs text-slate-400">{CONFIG.systemName} - 電子文件系統</div>
+                </div>
+            );
+        }
+
+        function App() {
+            const [activeTab, setActiveTab] = useState(CONFIG.tabs.showCalculation ? 'calculation' : 'docs');
+            const [isTimelineExpanded, setIsTimelineExpanded] = useState(false);
+            const [isEditMode, setIsEditMode] = useState(false);
+
+            // --- 核心資料 ---
+            const [name, setName] = useState('');
+            const [shareholderId, setShareholderId] = useState('');
+            
+            // 驗證相關
+            const [inputVerifyCode, setInputVerifyCode] = useState('');
+            const [isVerified, setIsVerified] = useState(false);
+            const [isVerifying, setIsVerifying] = useState(false);
+
+            // 股份狀態
+            const [sharesMap, setSharesMap] = useState(() => {
+                const initial = {};
+                CONFIG.shareTypes.forEach(t => initial[t.id] = '');
+                return initial;
+            });
+
+            const [type, setType] = useState('natural'); 
+            const [willingToOffset, setWillingToOffset] = useState(false);
+            const [offsetShares, setOffsetShares] = useState(''); 
+            const [additionalShares, setAdditionalShares] = useState('');
+
+            // --- 設定 ---
+            const [companyName, setCompanyName] = useState(CONFIG.companyName);
+            const [dividendSettings, setDividendSettings] = useState(CONFIG.dividends);
+            const [subscriptionPrice, setSubscriptionPrice] = useState(CONFIG.subscriptionPrice);
+
+            // --- 文件區狀態 ---
+            const [selectedDocId, setSelectedDocId] = useState('doc1');
+            const [signMethod, setSignMethod] = useState('online'); 
+            const [signatureImg, setSignatureImg] = useState(null);
+            const [isProcessing, setIsProcessing] = useState(false);
+
+            const [errors, setErrors] = useState({});
+            const [isCapturing, setIsCapturing] = useState(false);
+
+            const handleNumChange = (setter) => (e) => {
+                const raw = e.target.value.replace(/,/g, ''); 
+                if (raw === '' || !isNaN(raw)) setter(raw);
+            };
+
+            const handleShareTypeChange = (typeId) => (e) => {
+                if (isVerified) return; 
+                const raw = e.target.value.replace(/,/g, ''); 
+                if (raw === '' || !isNaN(raw)) {
+                    setSharesMap(prev => ({ ...prev, [typeId]: raw }));
+                }
+            };
+
+            const handleDividendChange = (index, newVal) => {
+                const updated = [...dividendSettings];
+                updated[index].amount = newVal;
+                setDividendSettings(updated);
+            };
+
+            const handleShareholderSelect = (e) => {
+                const sid = e.target.value;
+                setShareholderId(sid);
+                setIsVerified(false);
+                setInputVerifyCode('');
+                setName('');
+                const resetShares = {};
+                CONFIG.shareTypes.forEach(t => resetShares[t.id] = '');
+                setSharesMap(resetShares);
+                setWillingToOffset(false);
+                setOffsetShares('');
+                setAdditionalShares('');
+            };
+
+            // --- 身份驗證核心 ---
+            const handleVerifyIdentity = async () => {
+                if (!shareholderId) return;
+                if (!inputVerifyCode) {
+                    alert("請輸入驗證碼");
+                    return;
+                }
+                setIsVerifying(true);
+
+                if (CONFIG.n8nApiUrl) {
+                    try {
+                        const response = await fetch(CONFIG.n8nApiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ type: 'verify', shareholderId: shareholderId, code: inputVerifyCode })
+                        });
+                        
+                        if (!response.ok) {
+                             throw new Error(`伺服器回應錯誤: ${response.status}`);
+                        }
+
+                        const data = await response.json();
+                        
+                        if (data.success) {
+                            setIsVerified(true);
+                            setName(data.name);
+                            if (data.shares) {
+                                if (typeof data.shares === 'object') {
+                                    setSharesMap(prev => ({...prev, ...data.shares}));
+                                } else {
+                                    const firstType = CONFIG.shareTypes[0].id;
+                                    setSharesMap(prev => ({...prev, [firstType]: data.shares}));
+                                }
+                            }
+                            alert(`驗證成功！歡迎 ${data.name} 股東。`);
+                        } else {
+                            alert("驗證失敗：驗證碼錯誤或系統無此資料。");
+                            setInputVerifyCode('');
+                        }
+                    } catch (e) {
+                        console.error("Verification Error", e);
+                        alert(`連線驗證伺服器失敗。\n原因: ${e.message}\n請確認 Worker 網址或 n8n 是否正常運作。`);
+                    }
+                } else {
+                    // 測試模式
+                    await new Promise(r => setTimeout(r, 1000));
+                    if (inputVerifyCode === '1196' || inputVerifyCode === '8888') {
+                        setIsVerified(true);
+                        setName("蔡昀達 (測試)");
+                        setSharesMap({ voting_shares: "2", preferred_yi: "0" });
+                        alert("【測試模式】驗證成功！");
+                    } else {
+                        alert("【測試模式】驗證碼錯誤 (測試碼: 1196)");
+                    }
+                }
+                setIsVerifying(false);
+            };
+
+            const result = useMemo(() => {
+                let totalShares = 0;
+                Object.values(sharesMap).forEach(val => { totalShares += (Number(val) || 0); });
+                if (totalShares <= 0) return null;
+
+                const dividendResults = dividendSettings.map(setting => {
+                    const gross = Math.floor(totalShares * setting.amount);
+                    let hi = 0;
+                    if (type === 'natural' && gross >= CONFIG.tax.threshold) hi = Math.floor(gross * CONFIG.tax.rate);
+                    return { ...setting, gross, hi, net: gross - hi };
+                });
+
+                const totalNetDividend = dividendResults.reduce((sum, item) => sum + item.net, 0);
+                let maxOffsetSharesPossible = 0;
+                if (subscriptionPrice > 0) maxOffsetSharesPossible = Math.floor(totalNetDividend / subscriptionPrice);
+
+                let finalOffsetShares = 0;
+                let finalOffsetCost = 0;
+                if (willingToOffset) {
+                    let input = Number(offsetShares) || 0;
+                    if (input > maxOffsetSharesPossible) input = maxOffsetSharesPossible;
+                    finalOffsetShares = input;
+                    finalOffsetCost = finalOffsetShares * subscriptionPrice;
+                }
+
+                let extraShares = Number(additionalShares) || 0;
+                let extraCost = extraShares * subscriptionPrice;
+
+                return {
+                    totalShares, dividendResults, totalNetDividend, maxOffsetSharesPossible,
+                    finalOffsetShares, finalOffsetCost, extraShares, extraCost,
+                    totalNewShares: finalOffsetShares + extraShares,
+                    totalCost: finalOffsetCost + extraCost,
+                    remainingDividendCash: totalNetDividend - finalOffsetCost,
+                    finalBalance: (totalNetDividend - finalOffsetCost) - extraCost
+                };
+            }, [sharesMap, dividendSettings, type, willingToOffset, offsetShares, additionalShares, subscriptionPrice]);
+
+            const handleGeneratePDF = async (action) => {
+                if (!shareholderId) { alert("請先選擇股東身分！"); return; }
+                
+                // ★★★ 改在這裡才呼叫，避免初始化錯誤 ★★★
+                if (!window.jspdf) { alert("PDF 元件尚未載入，請重新整理"); return; }
+                const { jsPDF } = window.jspdf;
+
+                setIsProcessing(true);
+                const input = document.getElementById(`doc-preview-${selectedDocId}`);
+                
+                try {
+                    const canvas = await html2canvas(input, { scale: 2, useCORS: true });
+                    const imgData = canvas.toDataURL('image/png');
+                    const pdf = new jsPDF('p', 'mm', 'a4');
+                    const pdfWidth = pdf.internal.pageSize.getWidth();
+                    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+                    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                    const filename = `${shareholderId}_${name}_${CONFIG.documents.find(d=>d.id===selectedDocId).title}.pdf`;
+
+                    if (action === 'download') {
+                        pdf.save(filename);
+                        alert("文件下載成功！請列印並用印後，拍照上傳。");
+                    } else if (action === 'submit') {
+                        if (CONFIG.n8nApiUrl) {
+                            const pdfBlob = pdf.output('blob');
+                            const reader = new FileReader();
+                            reader.readAsDataURL(pdfBlob);
+                            reader.onloadend = async function() {
+                                const base64data = reader.result;
+                                try {
+                                    await fetch(CONFIG.n8nApiUrl, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ type: 'submit_doc', shareholderId, filename, file: base64data })
+                                    });
+                                    alert(`已成功送出！\n檔案將自動歸檔。`);
+                                } catch(e) { alert("上傳失敗，請檢查網路。"); }
+                            }
+                        } else {
+                            await new Promise(r => setTimeout(r, 1500));
+                            alert(`【測試模式】已成功送出！`);
+                        }
+                    }
+                } catch (err) { console.error(err); alert("文件生成失敗"); }
+                setIsProcessing(false);
+            };
+
+            const handleFileUpload = async (e, type) => {
+                const file = e.target.files[0];
+                if (!file || !shareholderId) { alert("請先選擇股東身分！"); return; }
+                setIsProcessing(true);
+                if (CONFIG.n8nApiUrl) {
+                    const reader = new FileReader();
+                    reader.readAsDataURL(file);
+                    reader.onloadend = async function() {
+                        const base64data = reader.result;
+                        try {
+                            await fetch(CONFIG.n8nApiUrl, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ type: 'proof' === type ? 'submit_proof' : 'submit_signed_paper', shareholderId, filename: file.name, file: base64data })
+                            });
+                            alert(`${file.name} 上傳成功！`);
+                        } catch(e) { alert("上傳失敗"); }
+                        setIsProcessing(false);
+                    }
+                } else {
+                    await new Promise(r => setTimeout(r, 1500));
+                    alert(`【測試模式】${file.name} 上傳成功！`);
+                    setIsProcessing(false);
+                }
+                e.target.value = '';
+            };
+
+            const handleDownloadImage = () => {
+                const element = document.getElementById('print-section');
+                if(!element) return;
+                setIsCapturing(true);
+                html2canvas(element, { scale: 2, backgroundColor: '#ffffff' }).then(canvas => {
+                    const link = document.createElement('a');
+                    link.href = canvas.toDataURL('image/png');
+                    link.download = `股利試算確認單_${name}.png`;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    setIsCapturing(false);
+                });
+            };
+
+            return (
+                <div className="pb-20">
+                    <header className="mb-6 text-center no-print pt-6"><h1 className="text-4xl font-extrabold text-slate-800 tracking-tight">{CONFIG.systemName}</h1></header>
+                    <div className="bg-white shadow-xl rounded-xl border border-slate-200 card overflow-hidden">
+                        
+                        <div className="flex border-b border-slate-200 bg-slate-50/50 no-print">
+                            {CONFIG.tabs.showCalculation && <button onClick={() => setActiveTab('calculation')} className={`flex-1 py-4 text-center font-bold text-lg transition duration-200 ${activeTab === 'calculation' ? 'text-blue-600 border-b-4 border-blue-600 bg-white' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}><i className="fas fa-calculator mr-2"></i>股利增資試算</button>}
+                            {CONFIG.tabs.showDocs && <button onClick={() => setActiveTab('docs')} className={`flex-1 py-4 text-center font-bold text-lg transition duration-200 ${activeTab === 'docs' ? 'text-blue-600 border-b-4 border-blue-600 bg-white' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}><i className="fas fa-file-contract mr-2"></i>股東文件區</button>}
+                        </div>
+
+                        {activeTab === 'calculation' && (
+                            <div className="fade-in">
+                                <div className="bg-slate-800 text-white p-6 no-print">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h2 className="font-bold text-xl"><i className="fas fa-cog mr-2"></i>試算參數</h2>
+                                        {CONFIG.allowUserEditParams && <button onClick={() => setIsEditMode(!isEditMode)} className="text-sm bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded transition">{isEditMode ? '鎖定參數' : '修改參數'}</button>}
+                                    </div>
+                                    {isEditMode ? (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-base">
+                                            <div className="md:col-span-2"><label className="block text-slate-400 mb-2">公司名稱</label><input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded p-3 text-white" /></div>
+                                            {dividendSettings.map((div, index) => (
+                                                <div key={div.id}><label className="block text-slate-400 mb-2">{div.label}</label><input type="text" value={formatInput(div.amount)} onChange={(e) => { const val = e.target.value.replace(/,/g, ''); if (val === '' || !isNaN(val)) handleDividendChange(index, val); }} className="w-full bg-slate-700 border border-slate-600 rounded p-3 text-white" /></div>
+                                            ))}
+                                            <div className="md:col-span-2"><label className="block text-slate-400 mb-2">現金增資價格</label><input type="text" value={formatInput(subscriptionPrice)} onChange={handleNumChange(setSubscriptionPrice)} className="w-full bg-slate-700 border border-slate-600 rounded p-3 text-white" /></div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-wrap gap-4 text-base"><div className="w-full font-bold text-xl mb-2">{companyName}</div>{dividendSettings.map(div => (<div key={div.id} className="bg-slate-700 px-4 py-2 rounded"><span className="text-slate-400">{div.label}：</span>${formatInput(div.amount)}</div>))}<div className="bg-slate-700 px-4 py-2 rounded"><span className="text-slate-400">增資價格：</span>${formatInput(subscriptionPrice)}</div></div>
+                                    )}
+                                </div>
+
+                                <div className="p-8 md:p-10">
+                                    <div className="text-center mb-10 no-print">
+                                        <h2 className="text-3xl font-bold text-slate-800">現金增資認購意願試算表</h2>
+                                        <p className="text-slate-500 mt-3 text-base">含現金股利抵繳試算</p>
+                                    </div>
+
+                                    <div className="bg-blue-50 border-l-8 border-blue-500 mb-10 rounded-r-lg shadow-sm no-print overflow-hidden">
+                                        <div className="p-4 flex justify-between items-center cursor-pointer hover:bg-blue-100 transition-colors" onClick={() => setIsTimelineExpanded(!isTimelineExpanded)}>
+                                            <h3 className="text-xl font-bold text-blue-800 flex items-center"><i className="fas fa-calendar-alt mr-3"></i>FY2026-主要事件時程</h3>
+                                            <div className="flex items-center text-blue-600 text-sm font-bold"><span className="mr-2">{isTimelineExpanded ? '收合' : '點擊展開'}</span><i className={`fas fa-chevron-down transition-transform duration-300 ${isTimelineExpanded ? 'rotate-180' : ''}`}></i></div>
+                                        </div>
+                                        <div className={`accordion-content ${isTimelineExpanded ? 'expanded' : ''}`}>
+                                            <div className="p-6 pt-0 border-t border-blue-100 mt-2">
+                                                <ul className="space-y-3 text-slate-700 font-medium text-base">
+                                                    <li>3/28 股東會通過2025應付股利</li>
+                                                    <li>5月調查7月現金增資意願及金額範圍</li>
+                                                    <li>7/6~7/10 結帳公布6/30淨值+決議2026H1應付股利+公辦增資價格</li>
+                                                    <li>7/20~7/29 股利原地轉增資收件</li>
+                                                    <li>7/20~7/29 現金增資收件+匯款</li>
+                                                    <li>8/17~8/21 2025股利匯款+2026H1股利匯款</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-8 no-print">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                            {/* ★★★ 試算頁：身份驗證模組 ★★★ */}
+                                            <div>
+                                                <label className="block text-base font-bold text-slate-700 mb-2">股東身分驗證 <span className="text-red-500">*</span></label>
+                                                {!isVerified ? (
+                                                    <div className="space-y-3">
+                                                        <select className="w-full p-3 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none" value={shareholderId} onChange={handleShareholderSelect}>
+                                                            <option value="">-- 請選擇股東戶號 --</option>
+                                                            {CONFIG.shareholderOptions.map(opt => (<option key={opt.id} value={opt.id}>{opt.label}</option>))}
+                                                        </select>
+                                                        {shareholderId && (
+                                                            <div className="flex gap-2 fade-in">
+                                                                <input type="password" placeholder="請輸入驗證碼" className="flex-1 p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" value={inputVerifyCode} onChange={(e) => setInputVerifyCode(e.target.value)} />
+                                                                <button onClick={handleVerifyIdentity} disabled={isVerifying} className="bg-blue-600 text-white px-4 py-2 rounded-lg whitespace-nowrap font-bold hover:bg-blue-700 disabled:opacity-50">{isVerifying ? '驗證中' : '驗證'}</button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <div className="bg-green-50 border border-green-200 p-4 rounded-lg fade-in">
+                                                        <div className="flex justify-between items-center mb-2"><span className="font-bold text-green-800 text-lg"><i className="fas fa-user-check mr-2"></i>{name}</span><button onClick={() => { setIsVerified(false); setShareholderId(''); setName(''); setInputVerifyCode(''); const r={}; CONFIG.shareTypes.forEach(t=>r[t.id]=''); setSharesMap(r); }} className="text-xs text-red-500 hover:text-red-700 underline">重新選擇</button></div>
+                                                        <div className="text-sm text-green-600">股東戶號: {shareholderId} | 狀態: 已驗證</div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                            
+                                            {/* 動態生成多種股份顯示框 (驗證後自動鎖定) */}
+                                            <div className="md:col-span-2">
+                                                <label className="block text-base font-bold text-slate-700 mb-3">持有股數 (驗證後自動帶入)</label>
+                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                                    {CONFIG.shareTypes.map(t => (
+                                                        <div key={t.id}>
+                                                            <div className="text-sm text-slate-500 mb-1">{t.name}</div>
+                                                            <input type="text" className={`w-full p-3 border rounded-lg ${isVerified ? 'bg-slate-100 text-slate-600 cursor-not-allowed' : 'bg-white focus:ring-2 focus:ring-blue-500'}`} value={formatInput(sharesMap[t.id])} onChange={handleShareTypeChange(t.id)} placeholder="0" readOnly={isVerified} />
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                {result && <div className="text-right mt-2 text-sm text-slate-600">合計總股數：<span className="font-bold text-lg text-blue-600">{formatInput(result.totalShares)}</span></div>}
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="flex gap-6">
+                                            <label className={`flex-1 p-4 border rounded-lg cursor-pointer flex items-center justify-center gap-3 ${type === 'natural' ? 'bg-blue-50 border-blue-500 text-blue-700' : ''}`}><input type="radio" checked={type === 'natural'} onChange={() => setType('natural')} className="hidden" />自然人</label>
+                                            <label className={`flex-1 p-4 border rounded-lg cursor-pointer flex items-center justify-center gap-3 ${type === 'legal' ? 'bg-purple-50 border-purple-500 text-purple-700' : ''}`}><input type="radio" checked={type === 'legal'} onChange={() => setType('legal')} className="hidden" />法人</label>
+                                        </div>
+
+                                        {result && (
+                                            <>
+                                                <div className="bg-slate-50 p-6 rounded-lg"><div className="flex justify-between font-bold text-xl text-blue-600"><span>可運用股利總淨額</span><span>{formatMoney(result.totalNetDividend)}</span></div></div>
+                                                <div className="pt-8 border-t">
+                                                    <label className="flex items-center gap-4 cursor-pointer mb-6"><input type="checkbox" checked={willingToOffset} onChange={e => setWillingToOffset(e.target.checked)} className="w-6 h-6" /><span className="text-lg font-bold">我願意以股利抵繳</span></label>
+                                                    {willingToOffset && (
+                                                        <div className="bg-green-50 p-6 rounded-lg mb-6"><div className="flex justify-between items-center"><div><label className="block font-bold text-green-800">欲抵繳股數</label><input type="text" className="bg-transparent border-b-2 border-green-300 text-2xl font-bold text-green-700 w-32" value={formatInput(offsetShares)} onChange={handleNumChange(setOffsetShares)} placeholder="0" /></div><div className="text-right"><div className="text-sm text-green-600">抵繳金額</div><div className="text-2xl font-bold text-green-700">{formatMoney(result.finalOffsetCost)}</div></div></div></div>
+                                                    )}
+                                                    {(() => {
+                                                        const currentOffset = Number(offsetShares) || 0;
+                                                        const isLocked = CONFIG.forceFullOffset && result.maxOffsetSharesPossible > 0 && (!willingToOffset || currentOffset < result.maxOffsetSharesPossible);
+                                                        return (
+                                                            <div className={`mt-8 ${isLocked ? 'opacity-50' : ''}`}><label className="block font-bold mb-3">額外現金認購股數</label><div className="bg-yellow-50 p-6 rounded-lg flex justify-between"><input type="text" disabled={isLocked} className="bg-transparent border-b-2 border-yellow-300 text-2xl font-bold text-yellow-800 w-32" value={formatInput(additionalShares)} onChange={handleNumChange(setAdditionalShares)} placeholder="0" /><div className="text-right"><div className="text-sm text-yellow-700">額外金額</div><div className="text-2xl font-bold text-yellow-800">{formatMoney(result.extraCost)}</div></div></div></div>
+                                                        );
+                                                    })()}
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+
+                                    {result && (
+                                        <div id="print-section" className="mt-12 border-4 border-slate-800 rounded-xl p-8 bg-white print-border">
+                                            <div className="text-center mb-4"><h3 className="text-2xl font-bold">{companyName}</h3><p>試算確認單</p></div>
+                                            <div className="grid grid-cols-2 gap-4 text-base">
+                                                <div>姓名：{name}</div><div className="text-right">總持有：{formatInput(result.totalShares)} 股</div>
+                                                <div className="col-span-2 border-b border-dashed my-2"></div>
+                                                <div>1. 股利總淨額</div><div className="text-right font-bold text-blue-700">{formatMoney(result.totalNetDividend)}</div>
+                                                <div className="col-span-2 bg-slate-50 p-3 rounded text-sm text-slate-600 space-y-1 mt-1 border border-slate-100">
+                                                    {result.dividendResults.map((item) => (
+                                                        <div key={item.id} className="flex justify-between"><span>{item.label}:</span><span>{formatMoney(item.gross)} (稅前) {item.hi > 0 ? ` - ${formatMoney(item.hi)} (二代健保)` : ''} = <b>{formatMoney(item.net)}</b></span></div>
+                                                    ))}
+                                                </div>
+                                                <div>2. 認購新股 ({formatInput(result.totalNewShares)}股)</div><div className="text-right text-red-600">-{formatMoney(result.totalCost)}</div>
+                                                <div className="col-span-2 border-b border-black my-2"></div>
+                                                <div className="font-bold text-lg">應收付淨額</div>
+                                                <div className={`text-right font-bold text-2xl ${result.finalBalance >= 0 ? 'text-blue-700' : 'text-red-600'}`}>{formatMoney(Math.abs(result.finalBalance))} <span className="text-sm">{result.finalBalance >= 0 ? '(公司應付)' : '(股東應補)'}</span></div>
+                                            </div>
+                                            <div className="text-center mt-6 no-print">
+                                                <button onClick={handleDownloadImage} disabled={isCapturing} className="bg-blue-600 text-white px-6 py-3 rounded-full shadow hover:bg-blue-700">{isCapturing ? '生成中...' : '下載確認單圖片'}</button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'docs' && (
+                            <div className="fade-in bg-slate-50 min-h-screen">
+                                <div className="bg-white p-6 shadow-sm border-b sticky top-0 z-10">
+                                    <div className="flex justify-between items-center mb-3">
+                                        <h3 className="font-bold text-lg flex items-center text-slate-700"><div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mr-2">1</div>身份驗證</h3>
+                                        <span className={`text-xs px-2 py-1 rounded ${CONFIG.n8nApiUrl ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{CONFIG.n8nApiUrl ? '🟢 連線至 n8n 斷點' : '⚪ 測試模式 (無資料庫)'}</span>
+                                    </div>
+                                    <div className="space-y-4">
+                                        {!isVerified ? (
+                                            <div className="space-y-3">
+                                                <select className="w-full p-3 border border-slate-300 rounded-lg text-lg bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none" value={shareholderId} onChange={handleShareholderSelect}>
+                                                    <option value="">-- 請選擇股東戶號 --</option>
+                                                    {CONFIG.shareholderOptions.map(opt => (<option key={opt.id} value={opt.id}>{opt.label}</option>))}
+                                                </select>
+                                                {shareholderId && (
+                                                    <div className="flex gap-2 fade-in">
+                                                        <input type="password" placeholder="請輸入驗證碼" className="flex-1 p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" value={inputVerifyCode} onChange={(e) => setInputVerifyCode(e.target.value)} />
+                                                        <button onClick={handleVerifyIdentity} disabled={isVerifying} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700 disabled:opacity-50">{isVerifying ? '驗證中...' : '驗證'}</button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg flex items-center fade-in">
+                                                <i className="fas fa-check-circle text-xl mr-3"></i>
+                                                <div><p className="font-bold">驗證成功</p><p className="text-sm">歡迎回來，{name} (總持有: {formatInput(result ? result.totalShares : 0)} 股)</p></div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className={`p-6 md:p-10 space-y-10 transition-opacity duration-500 ${!isVerified ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
+                                    <section>
+                                        <h3 className="font-bold text-lg mb-4 flex items-center text-slate-700"><div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mr-2">2</div>填寫與簽核</h3>
+                                        <div className="flex gap-2 mb-4 overflow-x-auto pb-2">{CONFIG.documents.map(doc => (<button key={doc.id} onClick={() => setSelectedDocId(doc.id)} className={`px-4 py-2 rounded-full whitespace-nowrap text-sm font-bold transition ${selectedDocId === doc.id ? 'bg-slate-800 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-100'}`}>{doc.title}</button>))}</div>
+                                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                            <div className="lg:col-span-2 bg-slate-200 p-4 rounded-xl overflow-auto shadow-inner" style={{maxHeight: '800px'}}>
+                                                <DocumentPreview docId={selectedDocId} data={{ shareholderId, shareholderName: name, sharesMap, totalShares: result?.totalShares, totalNewShares: result?.totalNewShares, offsetCost: result?.finalOffsetCost, extraCost: result?.extraCost }} signatureImg={signatureImg} />
+                                            </div>
+                                            <div className="lg:col-span-1 space-y-6">
+                                                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                                                    <h4 className="font-bold mb-4 text-slate-700">簽署方式</h4>
+                                                    <div className="flex gap-2 mb-4"><button onClick={() => setSignMethod('online')} className={`flex-1 py-2 rounded-lg border ${signMethod === 'online' ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'border-slate-200 text-slate-500'}`}>線上簽核</button><button onClick={() => setSignMethod('paper')} className={`flex-1 py-2 rounded-lg border ${signMethod === 'paper' ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'border-slate-200 text-slate-500'}`}>紙本上傳</button></div>
+                                                    {signMethod === 'online' ? (
+                                                        <div className="space-y-4">
+                                                            <div><p className="text-sm text-slate-500 mb-2">請在下方方框內簽名：</p><SignatureCanvas onSave={setSignatureImg} onClear={() => setSignatureImg(null)} /></div>
+                                                            <button onClick={() => handleGeneratePDF('submit')} disabled={!signatureImg || isProcessing} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md disabled:opacity-50 disabled:cursor-not-allowed">{isProcessing ? <i className="fas fa-spinner fa-spin"></i> : <><i className="fas fa-paper-plane mr-2"></i>確認簽署並送出</>}</button>
+                                                            <p className="text-xs text-slate-400 text-center">送出後系統將自動歸檔至您的專屬資料夾</p>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="space-y-4">
+                                                            <button onClick={() => handleGeneratePDF('download')} className="w-full border-2 border-slate-800 text-slate-800 py-3 rounded-lg font-bold hover:bg-slate-50"><i className="fas fa-download mr-2"></i>下載 PDF (未簽名)</button>
+                                                            <div className="border-t pt-4"><label className="block text-sm font-bold text-slate-700 mb-2">上傳已簽署文件 (拍照/掃描)</label><input type="file" accept="image/*,application/pdf" onChange={(e) => handleFileUpload(e, 'paper')} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/></div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                                                    <h3 className="font-bold text-lg mb-4 flex items-center text-slate-700"><div className="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center mr-2">3</div>匯款憑證回傳</h3>
+                                                    <div className="space-y-3"><p className="text-sm text-slate-500">完成匯款後，請上傳截圖或收據。</p><input type="file" accept="image/*,application/pdf" onChange={(e) => handleFileUpload(e, 'proof')} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"/></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </section>
+                                </div>
+                            </div>
+                        )}
+
+                    </div>
+                    
+                    <div className="text-center mt-10 text-slate-400 text-sm no-print">
+                        © 2025 {CONFIG.systemName} | 資料僅供試算，實際金額以公司正式通知為準
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+
