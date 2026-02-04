@@ -1,780 +1,1017 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>股務小幫手</title>
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+
     <style>
-        /* 列印專用樣式表 */
-        @media print {
-            .no-print { display: none !important; }
-            body { background: white !important; padding: 0 !important; }
-            .card { 
-                box-shadow: none !important; 
-                border: none !important; 
-                padding: 0 !important;
-                margin: 0 !important;
-                width: 100% !important;
-                max-width: 100% !important;
-            }
-            .print-only { display: block !important; }
-            .print-border { border: 2px solid #000 !important; }
-            #print-section {
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                padding: 20px;
-            }
-            /* 列印時強制字體大小調整，確保清晰 */
-            .print-text-lg { font-size: 14pt !important; }
-            .print-text-xl { font-size: 16pt !important; }
-            .print-text-2xl { font-size: 20pt !important; }
-        }
-        
-        .fade-in { animation: fadeIn 0.5s ease-in-out; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        
-        /* Accordion transition */
-        .accordion-content {
-            transition: max-height 0.3s ease-out, opacity 0.3s ease-out;
-            max-height: 0;
-            opacity: 0;
-            overflow: hidden;
-        }
-        .accordion-content.expanded {
-            max-height: 800px; /* 足夠大的高度 */
-            opacity: 1;
+        :root {
+            /* Tailwind-like Palette (Slate & Blue) */
+            --bg-body: #f1f5f9;
+            /* slate-100 */
+            --bg-card: #ffffff;
+            --text-main: #1e293b;
+            /* slate-800 */
+            --text-sub: #64748b;
+            /* slate-500 */
+
+            --primary: #2563eb;
+            /* blue-600 */
+            --primary-light: #eff6ff;
+            /* blue-50 */
+            --primary-hover: #1d4ed8;
+            /* blue-700 */
+
+            --success: #059669;
+            /* emerald-600 */
+            --success-bg: #ecfdf5;
+            /* emerald-50 */
+            --danger: #dc2626;
+            /* red-600 */
+            --danger-bg: #fef2f2;
+            /* red-50 */
+
+            --border: #cbd5e1;
+            /* slate-300 */
+            --radius: 12px;
+            --shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
         }
 
-        /* 簽名板樣式 */
-        canvas.signature-pad {
-            border: 2px dashed #cbd5e1;
-            border-radius: 0.5rem;
-            cursor: crosshair;
-            background: #fff;
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            margin: 0;
+            padding: 20px;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
             width: 100%;
-            touch-action: none; /* 防止手機滑動頁面 */
+            max-width: 650px;
+            /* Slightly wider for hybrid features */
+            background: var(--bg-card);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 30px;
+            position: relative;
+        }
+
+        /* Header */
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            position: relative;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--text-main);
+            margin: 0;
+            letter-spacing: -0.5px;
+        }
+
+        .admin-trigger {
+            position: absolute;
+            right: 0;
+            top: 0;
+            opacity: 0.1;
+            cursor: pointer;
+            padding: 5px;
+        }
+
+        .admin-trigger:hover {
+            opacity: 0.5;
+        }
+
+        /* Tabs (Refined Pill Style) */
+        .tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 25px;
+        }
+
+        .tab {
+            flex: 1 1 auto;
+            padding: 10px 16px;
+            text-align: center;
+            font-size: 15px;
+            font-weight: 600;
+            background: #f8fafc;
+            color: var(--text-sub);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: 1px solid transparent;
+        }
+
+        .tab:hover {
+            background: #e2e8f0;
+            color: var(--text-main);
+        }
+
+        .tab.active {
+            background: var(--bg-card);
+            color: var(--primary);
+            border-color: var(--primary);
+            box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.1);
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(5px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Common UI Elements */
+        .card {
+            background: #ffffff;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn.outline {
+            background: transparent;
+            border: 2px solid var(--text-main);
+            color: var(--text-main);
+        }
+
+        .btn.outline:hover {
+            background: var(--bg-body);
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            font-size: 14px;
+            color: var(--text-sub);
+        }
+
+        input,
+        select {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 16px;
+            background: #fff;
+            box-sizing: border-box;
+            transition: border-color 0.2s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--primary);
+            ring: 2px var(--primary-light);
+        }
+
+        /* --- Special: Timeline Accordion --- */
+        .timeline-box {
+            background: var(--primary-light);
+            border-left: 4px solid var(--primary);
+            border-radius: 0 8px 8px 0;
+            margin-bottom: 25px;
+            overflow: hidden;
+        }
+
+        .timeline-header {
+            padding: 15px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 700;
+            color: #1e3a8a;
+            /* dark blue */
+        }
+
+        .timeline-content {
+            height: 0;
+            overflow: hidden;
+            transition: height 0.3s ease-out;
+            padding: 0 15px;
+            /* Padding added via JS when open */
+        }
+
+        .timeline-content ul {
+            list-style: none;
+            padding: 0;
+            margin: 0 0 15px 0;
+        }
+
+        .timeline-content li {
+            position: relative;
+            padding-left: 20px;
+            margin-bottom: 10px;
+            font-size: 14px;
+            color: #334155;
+        }
+
+        .timeline-content li:before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: var(--primary);
+            font-weight: bold;
+        }
+
+        /* --- Special: Slider Checkbox --- */
+        .slider-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 15px;
+            background: #fff;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 28px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #cbd5e1;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked+.slider {
+            background-color: var(--success);
+        }
+
+        input:checked+.slider:before {
+            transform: translateX(22px);
+        }
+
+        /* --- Special: Confirmation Sheet (Visual) --- */
+        .conf-sheet {
+            border: 4px solid var(--text-main);
+            border-radius: 12px;
+            padding: 25px;
+            background: #fff;
+            margin-top: 30px;
+            position: relative;
+        }
+
+        .conf-header {
+            text-align: center;
+            border-bottom: 2px dashed #cbd5e1;
+            padding-bottom: 15px;
+            margin-bottom: 15px;
+        }
+
+        .conf-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 15px;
+        }
+
+        .conf-val {
+            font-weight: 700;
+        }
+
+        /* --- Special: Signature & Doc Preview --- */
+        .doc-preview-area {
+            background: #f8fafc;
+            border: 1px solid var(--border);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.6;
+            height: 300px;
+            overflow-y: auto;
+            box-shadow: inset 0 2px 4px 0 rgb(0 0 0 / 0.05);
+        }
+
+        canvas.sig-pad {
+            border: 2px dashed var(--border);
+            border-radius: 8px;
+            width: 100%;
+            height: 150px;
+            background: #fff;
+            touch-action: none;
+        }
+
+        /* --- Admin --- */
+        .admin-panel {
+            display: none;
+            border-top: 2px dashed #94a3b8;
+            margin-top: 40px;
+            padding-top: 20px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            margin-top: 10px;
+        }
+
+        .data-table th,
+        .data-table td {
+            border: 1px solid var(--border);
+            padding: 8px;
         }
     </style>
 </head>
-<body class="bg-gray-100 text-slate-800 font-sans min-h-screen flex items-center justify-center py-10">
-    <div id="root" class="w-full max-w-4xl px-4"></div>
 
-    <script type="text/babel">
-        const { useState, useMemo, useEffect, useRef } = React;
+<body>
 
-        // ==========================================
-        // ★★★ CONFIG 全域設定區 ★★★
-        // ==========================================
-        const CONFIG = {
-            systemName: "股務小幫手",
-            companyName: "達飆資本",
-            allowUserEditParams: false,
-            
-            // ★★★ n8n Webhook URL (使用 Cloudflare Worker) ★★★
-            n8nApiUrl: 'https://n8n-dbcapital-tool.chieh1025.workers.dev/', 
-            
-            forceFullOffset: true,
-            
-            tabs: {
-                showCalculation: true,
-                showDocs: true
-            },
+    <div class="container">
+        <div class="header">
+            <h1>股務小幫手</h1>
+            <div class="admin-trigger" onclick="openAdminLogin()"><i class="fas fa-cog"></i></div>
+        </div>
 
-            tax: { rate: 0.0211, threshold: 20000 },
+        <!-- Tabs (Pill Style) -->
+        <div class="tabs" id="main-tabs">
+            <div class="tab active" onclick="switchTab('query')" id="tab-query">1. 身份驗證</div>
+            <div class="tab" onclick="switchTab('netvalue')" id="tab-netvalue">2. 每月淨值</div>
+            <div class="tab" onclick="switchTab('calc')" id="tab-calc">3. 試算工具</div>
+            <div class="tab" onclick="switchTab('subdocs')" id="tab-subdocs">4. 增資文件</div>
+            <div class="tab" onclick="switchTab('docs')" id="tab-docs">5. 股東會</div>
+        </div>
 
-            // ★★★ 股份種類定義 (對應 n8n 回傳的 key) ★★★
-            shareTypes: [
-                { id: 'voting_shares', name: '普通股/甲種特別股' },
-                { id: 'preferred_yi', name: '乙種特別股' }
-            ],
+        <!-- 1. Verify -->
+        <div id="content-query" class="tab-content active">
+            <div class="card" style="text-align:center; padding: 40px 20px;">
+                <i class="fas fa-user-shield" style="font-size: 48px; color: var(--primary); margin-bottom: 20px;"></i>
+                <div class="input-group" style="text-align:left;">
+                    <label>選擇股東姓名</label>
+                    <select id="userSelect">
+                        <!-- JS Populated -->
+                    </select>
+                </div>
+                <div class="input-group" style="text-align:left;">
+                    <label>輸入驗證碼</label>
+                    <input type="password" id="verifyCode" placeholder="6位數驗證碼">
+                </div>
+                <button class="btn" onclick="verify()">驗證身份</button>
+                <div id="errorMsg" style="color:var(--danger); margin-top:15px; display:none;">驗證失敗</div>
+            </div>
+            <!-- Result State -->
+            <div id="verifyResult" class="card"
+                style="display:none; background:var(--primary-light); border-color:var(--primary);">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <h3 style="margin:0; color:var(--primary);" id="resName">-</h3>
+                        <div style="font-size:13px; color:var(--text-sub);" id="resId">-</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-size:12px; color:var(--text-sub);">目前持股</div>
+                        <div style="font-size:24px; font-weight:800; color:var(--text-main);" id="resShares">-</div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-            dividends: [
-                { id: 'div1', label: 'FY2025股利', amount: 55000 },
-                { id: 'div2', label: '2026H1股利', amount: 15000 }
-            ],
+        <!-- 2. Net Value -->
+        <div id="content-netvalue" class="tab-content">
+            <div class="card">
+                <canvas id="chartNetValue" height="220"></canvas>
+            </div>
+            <div class="card" style="padding:0; overflow:hidden;">
+                <table class="data-table" style="margin:0; border:none;">
+                    <tbody id="tableNetValue"></tbody>
+                </table>
+            </div>
+        </div>
 
-            subscriptionPrice: 115000,
+        <!-- 3. Calculator (Hybrid) -->
+        <div id="content-calc" class="tab-content">
 
-            // ★★★ 股東戶號清單 (正式版：01~38，排除跳號) ★★★
-            shareholderOptions: [
-                { id: "01", label: "01 蔡**" },
-                { id: "02", label: "02 郁*******" },
-                { id: "03", label: "03 楊**" },
-                { id: "04", label: "04 張**" },
-                { id: "05", label: "05 楊**" },
-                { id: "06", label: "06 崴*******" },
-                { id: "08", label: "08 涂**" },
-                { id: "09", label: "09 邱**" },
-                { id: "10", label: "10 林*" },
-                { id: "12", label: "12 茗*****" },
-                { id: "13", label: "13 蔡**" },
-                { id: "14", label: "14 王**" },
-                { id: "15", label: "15 郭**" },
-                { id: "16", label: "16 廖**" },
-                { id: "18", label: "18 潘**" },
-                { id: "19", label: "19 曾**" },
-                { id: "20", label: "20 展***********" },
-                { id: "21", label: "21 比*******" },
-                { id: "22", label: "22 陳**" },
-                { id: "23", label: "23 蕭**" },
-                { id: "25", label: "25 謝**" },
-                { id: "26", label: "26 金********" },
-                { id: "27", label: "27 陳**" },
-                { id: "28", label: "28 福*******" },
-                { id: "30", label: "30 賴**" },
-                { id: "31", label: "31 林**" },
-                { id: "32", label: "32 許**" },
-                { id: "33", label: "33 歐********" },
-                { id: "34", label: "34 零*******" },
-                { id: "35", label: "35 默********" },
-                { id: "36", label: "36 林**" },
-                { id: "37", label: "37 金*******" },
-                { id: "38", label: "38 貝*********" },
-                { id: "39", label: "39 赫*******" }
-            ],
+            <!-- Timeline Accordion -->
+            <div class="timeline-box">
+                <div class="timeline-header" onclick="toggleTimeline()">
+                    <span><i class="fas fa-calendar-alt"></i> 活動時程表</span>
+                    <i class="fas fa-chevron-down" id="timelineIcon"></i>
+                </div>
+                <div class="timeline-content" id="timelineContent">
+                    <ul>
+                        <li>3/28 股東會通過2025應付股利</li>
+                        <li>5月 調查7月現金增資意願</li>
+                        <li>7/06 公布淨值與增資價格</li>
+                        <li>7/20 增資收件截止</li>
+                        <li>8/17 股利匯款日</li>
+                    </ul>
+                </div>
+            </div>
 
-            documents: [
-                { id: "doc1", title: "增資認購意願書" },
-                { id: "doc2", title: "股東個資同意書 (預留)" },
-                { id: "doc3", title: "放棄認購聲明書 (預留)" }
-            ]
+            <!-- Logic Section -->
+            <div class="card">
+                <div class="conf-row"><span>持有股數</span><span class="conf-val" id="calBaseShares">0</span></div>
+                <div class="conf-row"><span>身份類別</span><span class="conf-val" id="calBaseType">-</span></div>
+                <hr style="margin:15px 0; border:0; border-top:1px solid var(--border);">
+
+                <div class="conf-row">
+                    <span>FY2025 股利總額 <small style="color:#64748b;">(@<span id="labelDiv">0</span>)</small></span>
+                    <span class="conf-val" id="calTotalDiv">0</span>
+                </div>
+                <div class="conf-row">
+                    <span>二代健保 <small id="labelTax" style="color:#64748b;">(0%)</small></span>
+                    <span class="conf-val" style="color:var(--danger);" id="calTax">0</span>
+                </div>
+                <div class="conf-row" style="margin-top:10px; font-size:18px; color:var(--primary);">
+                    <span>應收股利淨額</span>
+                    <span class="conf-val" id="calNetDiv">0</span>
+                </div>
+            </div>
+
+            <!-- Q&A Slider -->
+            <div class="slider-row" style="margin-bottom:20px;">
+                <span style="font-weight:600;">參與此次現金增資?</span>
+                <label class="switch">
+                    <input type="checkbox" id="toggleSub" onchange="onSubToggle()">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div id="q2-area" class="card" style="display:none; animation:fadeIn 0.3s;">
+                <div class="input-group">
+                    <label>預計認購股數 (每股 <span id="labelSubPrice">0</span> 元)</label>
+                    <input type="number" id="subShares" placeholder="輸入股數" oninput="calcFinal()">
+                </div>
+            </div>
+
+            <!-- Confirmation Sheet (Auto Generated) -->
+            <div id="final-result" style="display:none;">
+                <div id="print-sheet" class="conf-sheet">
+                    <div class="conf-header">
+                        <h3 style="margin:0;">試算確認單</h3>
+                        <small>僅供試算，實際金額以通知為準</small>
+                    </div>
+                    <!-- Content injected by JS -->
+                    <div id="sheet-content"></div>
+
+                    <div class="conf-row"
+                        style="margin-top:20px; padding-top:15px; border-top:2px solid var(--text-main);">
+                        <span style="font-size:18px;">最終應收付</span>
+                        <span class="conf-val" style="font-size:24px;" id="sheet-total">0</span>
+                    </div>
+                    <div style="text-align:right; font-size:12px;" id="sheet-action">action</div>
+                </div>
+                <button class="btn outline" style="margin-top:15px;" onclick="downloadSheet()">
+                    <i class="fas fa-download"></i> 下載確認單圖片
+                </button>
+            </div>
+        </div>
+
+        <!-- 4. Sub Docs (Sign & PDF) -->
+        <div id="content-subdocs" class="tab-content">
+            <div class="card">
+                <h3>增資認購意願書</h3>
+                <!-- Document Preview (Simplified HTML representation) -->
+                <div class="doc-preview-area" id="docPreview">
+                    <div style="text-align:center; font-weight:bold; margin-bottom:15px;">增資認購意願書</div>
+                    <p>立書人：<span id="docName">___</span> (戶號:<span id="docId">___</span>)</p>
+                    <p>兹同意參與本次增資，並確認右列資訊無誤。</p>
+                    <p>認購股數：<span id="docShares">0</span> 股</p>
+                    <p>總金額：<span id="docCost">0</span> 元</p>
+                    <p>簽署日期：<span id="docDate">202x/xx/xx</span></p>
+                    <div id="docSigContainer" style="margin-top:20px; border-bottom:1px solid #000; height:50px;"></div>
+                </div>
+
+                <!-- Signature Pad -->
+                <label style="font-size:14px; font-weight:600; display:block; margin-bottom:5px;">請在此簽名：</label>
+                <canvas id="sigPad" class="sig-pad" width="300" height="150"></canvas>
+                <div style="display:flex; gap:10px; margin-top:10px;">
+                    <button class="btn outline" style="flex:1;" onclick="clearSig()">清除</button>
+                    <button class="btn" style="flex:2;" onclick="generatePDF()">確認簽署並下載 PDF</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. Meeting Docs -->
+        <div id="content-docs" class="tab-content">
+            <!-- Requested Attendance Button -->
+            <div class="card" style="background:var(--primary-light); border-color:var(--primary); text-align:center;">
+                <h3 style="margin-top:0; color:var(--primary);">出席報到</h3>
+                <p style="font-size:13px; color:var(--text-sub);">股東會當日請點擊下方按鈕進行報到</p>
+                <button class="btn" onclick="alert('報到功能開發中')">
+                    <i class="fas fa-qrcode"></i> 線上報到
+                </button>
+            </div>
+
+            <div class="card">
+                <div class="conf-row" style="align-items:center;">
+                    <div style="font-weight:600;">電子投票</div>
+                    <button class="btn"
+                        style="width:auto; padding:6px 12px; font-size:13px; background:var(--success);">前往投票</button>
+                </div>
+                <hr style="margin:10px 0; border:0; border-top:1px dashed var(--border);">
+                <div class="conf-row" style="align-items:center;">
+                    <div>開會通知書</div>
+                    <a href="#" style="color:var(--primary); font-size:13px;">下載</a>
+                </div>
+                <div class="conf-row" style="align-items:center;">
+                    <div>議事手冊</div>
+                    <a href="#" style="color:var(--primary); font-size:13px;">下載</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin Panel -->
+        <div id="adminPanel" class="admin-panel">
+            <h3>🔧 管理後台</h3>
+            <div style="display:flex; gap:5px; margin-bottom:15px;">
+                <button onclick="admTab('users')" class="btn outline" style="width:auto; padding:5px 10px;">股東</button>
+                <button onclick="admTab('params')" class="btn outline" style="width:auto; padding:5px 10px;">參數</button>
+                <button onclick="admTab('data')" class="btn outline" style="width:auto; padding:5px 10px;">淨值</button>
+                <button onclick="exportCode()" class="btn"
+                    style="width:auto; padding:5px 10px; margin-left:auto; background:var(--success);">匯出</button>
+            </div>
+
+            <div id="adm-users" class="adm-content">
+                <div style="max-height:200px; overflow:auto;">
+                    <table class="data-table" id="tblUsers">
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <button class="btn outline" onclick="addUserRow()" style="margin-top:5px; font-size:12px;">+ 新增</button>
+            </div>
+
+            <div id="adm-params" class="adm-content" style="display:none;">
+                <div class="input-group"><label>股利 (元)</label><input type="number" id="inpDiv" onchange="saveAdm()">
+                </div>
+                <div class="input-group"><label>增資價 (元)</label><input type="number" id="inpSubPrice"
+                        onchange="saveAdm()"></div>
+            </div>
+
+            <div id="adm-data" class="adm-content" style="display:none;">
+                <table class="data-table" id="tblNet">
+                    <tbody></tbody>
+                </table>
+                <button class="btn outline" onclick="addNetRow()" style="margin-top:5px; font-size:12px;">+ 新增</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="loginModal" class="modal">
+        <div class="card" style="width:300px;">
+            <h3>管理員登入</h3>
+            <input type="password" id="admPwd" placeholder="密碼" style="margin-bottom:10px;">
+            <button class="btn" onclick="admLogin()">登入</button>
+            <button class="btn outline" style="margin-top:10px; border:none;"
+                onclick="document.getElementById('loginModal').style.display='none'">取消</button>
+        </div>
+    </div>
+    <div id="exportModal" class="modal">
+        <div class="card" style="width:90%; max-width:400px;">
+            <h3>匯出程式碼</h3>
+            <textarea id="exportText" style="width:100%; height:150px; font-size:12px;" readonly></textarea>
+            <button class="btn"
+                onclick="navigator.clipboard.writeText(document.getElementById('exportText').value); alert('已複製')">複製</button>
+            <button class="btn outline" style="margin-top:10px; border:none;"
+                onclick="document.getElementById('exportModal').style.display='none'">關閉</button>
+        </div>
+    </div>
+
+    <script>
+        // --- Config & Data ---
+        var CFG = { div: 1.5, subPrice: 15, tax: 2.11, thres: 20000 };
+        var NET = [{ p: '2024/01', v: 12.5 }, { p: '2024/02', v: 12.8 }, { p: '2024/06', v: 14.2 }];
+        var USERS = [
+            { n: '01 蔡**', id: '01', t: 'individual' },
+            { n: '02 郁*******', id: '02', t: 'individual' },
+            { n: '03 楊**', id: '03', t: 'individual' },
+            { n: '04 張**', id: '04', t: 'individual' },
+            { n: '05 楊**', id: '05', t: 'individual' },
+            { n: '06 崴*******', id: '06', t: 'individual' },
+            { n: '08 涂**', id: '08', t: 'individual' },
+            { n: '09 邱**', id: '09', t: 'individual' },
+            { n: '10 林*', id: '10', t: 'individual' },
+            { n: '12 茗*****', id: '12', t: 'individual' },
+            { n: '13 蔡**', id: '13', t: 'individual' },
+            { n: '14 王**', id: '14', t: 'individual' },
+            { n: '15 郭**', id: '15', t: 'individual' },
+            { n: '16 廖**', id: '16', t: 'individual' },
+            { n: '18 潘**', id: '18', t: 'individual' },
+            { n: '19 曾**', id: '19', t: 'individual' },
+            { n: '20 展***********', id: '20', t: 'individual' },
+            { n: '21 比*******', id: '21', t: 'individual' },
+            { n: '22 陳**', id: '22', t: 'individual' },
+            { n: '23 蕭**', id: '23', t: 'individual' },
+            { n: '25 謝**', id: '25', t: 'individual' },
+            { n: '26 金********', id: '26', t: 'individual' },
+            { n: '27 陳**', id: '27', t: 'individual' },
+            { n: '28 福*******', id: '28', t: 'individual' },
+            { n: '30 賴**', id: '30', t: 'individual' },
+            { n: '31 林**', id: '31', t: 'individual' },
+            { n: '32 許**', id: '32', t: 'individual' },
+            { n: '33 歐********', id: '33', t: 'individual' },
+            { n: '34 零*******', id: '34', t: 'individual' },
+            { n: '35 默********', id: '35', t: 'individual' },
+            { n: '36 林**', id: '36', t: 'individual' },
+            { n: '37 金*******', id: '37', t: 'individual' },
+            { n: '38 貝*********', id: '38', t: 'individual' },
+            { n: '39 赫*******', id: '39', t: 'individual' }
+        ];
+        const API = 'https://n8n-dbcapital-tool.chieh1025.workers.dev/';
+
+        // --- State ---
+        let ME = null;
+        let chart = null;
+        let sigPadCtx = null;
+        let isDrawing = false;
+
+        window.onload = () => {
+            if (localStorage.CFG) CFG = JSON.parse(localStorage.CFG);
+            if (localStorage.NET) NET = JSON.parse(localStorage.NET);
+            if (localStorage.USERS) USERS = JSON.parse(localStorage.USERS);
+            renderUI();
+            initSigPad();
         };
 
-        // --- 輔助函式 ---
-        const formatMoney = (num) => new Intl.NumberFormat('zh-TW', { style: 'currency', currency: 'TWD', minimumFractionDigits: 0 }).format(num);
-        const formatInput = (val) => {
-            if (val === '' || val === undefined || val === null) return '';
-            const str = val.toString();
-            const parts = str.split('.');
-            parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-            return parts.join('.');
-        };
+        function renderUI() {
+            // Dropdown
+            const sel = document.getElementById('userSelect');
+            sel.innerHTML = '<option value="">請選擇股東</option>';
+            USERS.forEach(u => {
+                let opt = document.createElement('option');
+                opt.value = u.id; opt.innerText = u.n;
+                sel.appendChild(opt);
+            });
 
-        // ==========================================
-        // ★★★ 簽名板元件 ★★★
-        // ==========================================
-        function SignatureCanvas({ onSave, onClear }) {
-            const canvasRef = useRef(null);
-            const [isDrawing, setIsDrawing] = useState(false);
+            // Params
+            document.getElementById('inpDiv').value = CFG.div;
+            document.getElementById('inpSubPrice').value = CFG.subPrice;
+            document.getElementById('labelDiv').innerText = CFG.div;
+            document.getElementById('labelSubPrice').innerText = CFG.subPrice;
 
-            useEffect(() => {
-                const canvas = canvasRef.current;
-                if(!canvas) return;
-                const ratio = Math.max(window.devicePixelRatio || 1, 1);
-                canvas.width = canvas.offsetWidth * ratio;
-                canvas.height = canvas.offsetHeight * ratio;
-                canvas.getContext("2d").scale(ratio, ratio);
-                const ctx = canvas.getContext('2d');
-                ctx.strokeStyle = "#000";
-                ctx.lineWidth = 2;
-                ctx.lineCap = "round";
-            }, []);
+            drawNet();
+        }
 
-            const getPos = (e) => {
-                const canvas = canvasRef.current;
-                const rect = canvas.getBoundingClientRect();
-                const x = (e.clientX || e.touches[0].clientX) - rect.left;
-                const y = (e.clientY || e.touches[0].clientY) - rect.top;
-                return { x, y };
-            };
+        // --- 1. Verify ---
+        async function verify() {
+            const id = document.getElementById('userSelect').value;
+            const pwd = document.getElementById('verifyCode').value;
+            if (!id || !pwd) return alert('請輸入完整資料');
 
-            const startDrawing = (e) => {
-                e.preventDefault(); 
-                setIsDrawing(true);
-                const { x, y } = getPos(e);
-                const ctx = canvasRef.current.getContext('2d');
-                ctx.beginPath();
-                ctx.moveTo(x, y);
-            };
+            // ★★★ 測試模式 Bypass ★★★
+            if (pwd === '8888') {
+                const local = USERS.find(u => u.id === id) || { n: '測試人員', id: id, t: 'individual' };
+                ME = { name: local.n, id: local.id, shares: 10000, type: local.t, success: true };
 
+                document.getElementById('resName').innerText = ME.name;
+                document.getElementById('resId').innerText = ME.id;
+                document.getElementById('resShares').innerText = ME.shares.toLocaleString();
+                document.getElementById('verifyResult').style.display = 'flex';
+                document.getElementById('errorMsg').style.display = 'none';
+
+                initCalc();
+                updateDocPreview();
+                alert('【測試模式】驗證通過');
+                return;
+            }
+
+            try {
+                const r = await fetch(API, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'verify', shareholderId: id, verifyCode: pwd })
+                });
+                const d = await r.json();
+                if (d.success) {
+                    const local = USERS.find(u => u.id === id);
+                    ME = { ...d, type: local ? local.t : 'individual' };
+
+                    document.getElementById('resName').innerText = ME.name;
+                    document.getElementById('resId').innerText = ME.id.substr(0, 3) + '****';
+                    document.getElementById('resShares').innerText = ME.shares.toLocaleString();
+                    document.getElementById('verifyResult').style.display = 'flex';
+                    document.getElementById('errorMsg').style.display = 'none';
+
+                    initCalc();
+                    updateDocPreview(); // update doc info
+                } else {
+                    document.getElementById('errorMsg').style.display = 'block';
+                }
+            } catch (e) { alert('連線失敗'); }
+        }
+
+        // --- 3. Calculator ---
+        function toggleTimeline() {
+            const c = document.getElementById('timelineContent');
+            const i = document.getElementById('timelineIcon');
+            if (c.style.height === 'auto') {
+                c.style.height = '0'; c.style.padding = '0 15px'; i.className = 'fas fa-chevron-down';
+            } else {
+                c.style.height = 'auto'; c.style.padding = '10px 15px'; i.className = 'fas fa-chevron-up';
+            }
+        }
+
+        function initCalc() {
+            if (!ME) return;
+            document.getElementById('calBaseShares').innerText = ME.shares.toLocaleString();
+            document.getElementById('calBaseType').innerText = ME.type == 'corporate' ? '法人' : '自然人';
+
+            const total = Math.floor(ME.shares * CFG.div);
+            document.getElementById('calTotalDiv').innerText = total.toLocaleString();
+
+            let tax = 0;
+            if (ME.type !== 'corporate' && total >= CFG.thres) {
+                tax = Math.floor(total * (CFG.tax / 100));
+                document.getElementById('labelTax').innerText = `(${CFG.tax}%)`;
+            }
+            document.getElementById('calTax').innerText = tax.toLocaleString();
+            document.getElementById('calNetDiv').innerText = (total - tax).toLocaleString();
+
+            calcFinal();
+        }
+
+        function onSubToggle() {
+            const on = document.getElementById('toggleSub').checked;
+            document.getElementById('q2-area').style.display = on ? 'block' : 'none';
+
+            if (!on) {
+                document.getElementById('subShares').value = 0;
+                calcFinal();
+            }
+        }
+
+        function calcFinal() {
+            if (!ME) return;
+            const netDiv = parseInt(document.getElementById('calNetDiv').innerText.replace(/,/g, '')) || 0;
+            const subShares = parseInt(document.getElementById('subShares').value) || 0;
+            const cost = subShares * CFG.subPrice;
+            const final = netDiv - cost;
+
+            // Render Sheet
+            const html = `
+            <div class="conf-row"><span>股東姓名</span><span class="conf-val">${ME.name}</span></div>
+            <div class="conf-row"><span>應收股利</span><span class="conf-val">${netDiv.toLocaleString()}</span></div>
+            <div class="conf-row"><span>認購股數</span><span class="conf-val">${subShares.toLocaleString()} 股</span></div>
+            <div class="conf-row"><span>應付股款</span><span class="conf-val" style="color:var(--danger)">-${cost.toLocaleString()}</span></div>
+        `;
+            document.getElementById('sheet-content').innerHTML = html;
+
+            const totalEl = document.getElementById('sheet-total');
+            const actEl = document.getElementById('sheet-action');
+
+            if (final >= 0) {
+                totalEl.innerText = `實領 ${final.toLocaleString()}`;
+                totalEl.style.color = 'var(--success)';
+                actEl.innerText = '公司將匯入您的帳戶';
+            } else {
+                totalEl.innerText = `補繳 ${Math.abs(final).toLocaleString()}`;
+                totalEl.style.color = 'var(--danger)';
+                actEl.innerText = '請依通知書匯款';
+            }
+
+            document.getElementById('final-result').style.display = 'block';
+        }
+
+        function downloadSheet() {
+            html2canvas(document.getElementById('print-sheet')).then(c => {
+                const link = document.createElement('a');
+                link.download = `確認單-${ME.name}.png`;
+                link.href = c.toDataURL();
+                link.click();
+            });
+        }
+
+        // --- 4. Sub Docs (Signature) ---
+        function updateDocPreview() {
+            if (!ME) return;
+            document.getElementById('docName').innerText = ME.name;
+            document.getElementById('docId').innerText = ME.id;
+            document.getElementById('docDate').innerText = new Date().toLocaleDateString();
+
+            // update shares/cost from calc tab if possible, else 0
+            const sub = document.getElementById('subShares').value || 0;
+            document.getElementById('docShares').innerText = sub;
+            document.getElementById('docCost').innerText = (sub * CFG.subPrice).toLocaleString();
+        }
+
+        function initSigPad() {
+            const c = document.getElementById('sigPad');
+            sigPadCtx = c.getContext('2d');
+            sigPadCtx.lineWidth = 2;
+            sigPadCtx.lineCap = 'round';
+
+            const start = (e) => { isDrawing = true; sigPadCtx.beginPath(); draw(e); };
+            const end = () => { isDrawing = false; sigPadCtx.beginPath(); };
             const draw = (e) => {
                 if (!isDrawing) return;
                 e.preventDefault();
-                const { x, y } = getPos(e);
-                const ctx = canvasRef.current.getContext('2d');
-                ctx.lineTo(x, y);
-                ctx.stroke();
+                const rect = c.getBoundingClientRect();
+                const x = (e.clientX || e.touches[0].clientX) - rect.left;
+                const y = (e.clientY || e.touches[0].clientY) - rect.top;
+                sigPadCtx.lineTo(x, y);
+                sigPadCtx.stroke();
             };
 
-            const stopDrawing = () => {
-                if(isDrawing) {
-                    setIsDrawing(false);
-                    if (onSave) onSave(canvasRef.current.toDataURL());
-                }
-            };
-
-            const clear = () => {
-                const canvas = canvasRef.current;
-                const ctx = canvas.getContext('2d');
-                ctx.clearRect(0, 0, canvas.width, canvas.height); 
-                ctx.beginPath(); 
-                if (onClear) onClear();
-            };
-
-            return (
-                <div className="relative">
-                    <canvas 
-                        ref={canvasRef}
-                        className="signature-pad h-48 w-full block"
-                        onMouseDown={startDrawing}
-                        onMouseMove={draw}
-                        onMouseUp={stopDrawing}
-                        onMouseLeave={stopDrawing}
-                        onTouchStart={startDrawing}
-                        onTouchMove={draw}
-                        onTouchEnd={stopDrawing}
-                    />
-                    <button onClick={clear} className="absolute top-2 right-2 text-xs bg-gray-200 hover:bg-gray-300 px-2 py-1 rounded text-gray-600">
-                        <i className="fas fa-eraser mr-1"></i>清除
-                    </button>
-                </div>
-            );
+            c.addEventListener('mousedown', start);
+            c.addEventListener('mouseup', end);
+            c.addEventListener('mousemove', draw);
+            c.addEventListener('touchstart', start);
+            c.addEventListener('touchend', end);
+            c.addEventListener('touchmove', draw);
         }
 
-        // ==========================================
-        // ★★★ 文件渲染元件 (A4 紙張樣式) ★★★
-        // ==========================================
-        function DocumentPreview({ docId, data, signatureImg }) {
-            const date = new Date();
-            const sharesDetail = CONFIG.shareTypes.map(type => {
-                const count = data.sharesMap?.[type.id] || 0;
-                return count > 0 ? `${type.name} ${formatInput(count)} 股` : null;
-            }).filter(Boolean).join('、');
-
-            return (
-                <div id={`doc-preview-${docId}`} className="bg-white p-10 border border-slate-300 shadow-sm mx-auto text-slate-900 leading-relaxed relative" style={{ width: '100%', maxWidth: '800px', minHeight: '800px' }}>
-                    <div className="text-center mb-8 border-b-2 border-slate-800 pb-4">
-                        <h2 className="text-2xl font-bold">{CONFIG.companyName}</h2>
-                        <h3 className="text-xl font-bold mt-2">{CONFIG.documents.find(d => d.id === docId)?.title || "文件"}</h3>
-                        <p className="text-sm text-slate-500 mt-1">文件編號: 2025-{docId.toUpperCase()}-{data.shareholderId || 'XXX'}</p>
-                    </div>
-
-                    {docId === 'doc1' && (
-                        <div className="space-y-6 text-base">
-                            <p><strong>立書人 (股東姓名)：</strong><u>&nbsp;&nbsp;{data.shareholderName || '____________'}&nbsp;&nbsp;</u><br/><strong>股東戶號：</strong><u>&nbsp;&nbsp;{data.shareholderId || '____________'}&nbsp;&nbsp;</u></p>
-                            <p>茲確認本人持有貴公司股票共計 <strong>{formatInput(data.totalShares) || '0'}</strong> 股{sharesDetail && <span className="text-sm text-slate-600"> ({sharesDetail})</span>}，並同意參與貴公司 114 年度現金增資計畫。</p>
-                            <table className="w-full border-collapse border border-slate-400 my-4 text-sm">
-                                <thead><tr className="bg-slate-100"><th className="border border-slate-400 p-2">項目</th><th className="border border-slate-400 p-2">內容</th><th className="border border-slate-400 p-2">金額/股數</th></tr></thead>
-                                <tbody>
-                                    <tr><td className="border border-slate-400 p-2">現金股利抵繳</td><td className="border border-slate-400 p-2">同意以現金股利全額/部分抵充股款</td><td className="border border-slate-400 p-2">{formatMoney(data.offsetCost || 0)}</td></tr>
-                                    <tr><td className="border border-slate-400 p-2">現金認購</td><td className="border border-slate-400 p-2">額外匯款認購股數</td><td className="border border-slate-400 p-2">{formatMoney(data.extraCost || 0)}</td></tr>
-                                    <tr className="bg-slate-50 font-bold"><td className="border border-slate-400 p-2" colSpan="2">本次增資認購總股數</td><td className="border border-slate-400 p-2 text-blue-600">{formatInput(data.totalNewShares || 0)} 股</td></tr>
-                                </tbody>
-                            </table>
-                            <p>本人瞭解並同意，上述認購款項若未於繳款期限內完成繳納 (含股利抵繳確認)，視同放棄本次認購權利。</p>
-                            <div className="mt-12 pt-8">
-                                <div className="flex justify-between items-end">
-                                    <div className="w-1/2">
-                                        <p className="mb-2 font-bold">股東簽章：</p>
-                                        <div className="h-24 border-b border-slate-400 relative">
-                                            {signatureImg ? <img src={signatureImg} className="h-full absolute bottom-0 left-0" alt="簽名" /> : <span className="text-slate-300 text-sm absolute bottom-2">請在此簽名或蓋章</span>}
-                                        </div>
-                                    </div>
-                                    <div className="text-right"><p>中華民國 &nbsp;{date.getFullYear()-1911}&nbsp; 年 &nbsp;{date.getMonth()+1}&nbsp; 月 &nbsp;{date.getDate()}&nbsp; 日</p></div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    {(docId === 'doc2' || docId === 'doc3') && <div className="text-center py-20 text-slate-400"><i className="fas fa-file-contract text-6xl mb-4"></i><p>此文件範本尚未啟用</p></div>}
-                    <div className="absolute bottom-4 left-0 w-full text-center text-xs text-slate-400">{CONFIG.systemName} - 電子文件系統</div>
-                </div>
-            );
+        function clearSig() {
+            const c = document.getElementById('sigPad');
+            sigPadCtx.clearRect(0, 0, c.width, c.height);
+            document.getElementById('docSigContainer').innerHTML = ''; // clear preview
         }
 
-        function App() {
-            const [activeTab, setActiveTab] = useState(CONFIG.tabs.showCalculation ? 'calculation' : 'docs');
-            const [isTimelineExpanded, setIsTimelineExpanded] = useState(false);
-            const [isEditMode, setIsEditMode] = useState(false);
+        function generatePDF() {
+            if (!ME) return alert('請先驗證');
 
-            // --- 核心資料 ---
-            const [name, setName] = useState('');
-            const [shareholderId, setShareholderId] = useState('');
-            
-            // 驗證相關
-            const [inputVerifyCode, setInputVerifyCode] = useState('');
-            const [isVerified, setIsVerified] = useState(false);
-            const [isVerifying, setIsVerifying] = useState(false);
+            // 1. Snapshot Signature
+            const sigCanvas = document.getElementById('sigPad');
+            const sigImg = new Image();
+            sigImg.src = sigCanvas.toDataURL();
+            sigImg.style.height = '100%';
 
-            // 股份狀態
-            const [sharesMap, setSharesMap] = useState(() => {
-                const initial = {};
-                CONFIG.shareTypes.forEach(t => initial[t.id] = '');
-                return initial;
-            });
+            // 2. Put in Preview
+            const cont = document.getElementById('docSigContainer');
+            cont.innerHTML = ''; cont.appendChild(sigImg);
 
-            const [type, setType] = useState('natural'); 
-            const [willingToOffset, setWillingToOffset] = useState(false);
-            const [offsetShares, setOffsetShares] = useState(''); 
-            const [additionalShares, setAdditionalShares] = useState('');
-
-            // --- 設定 ---
-            const [companyName, setCompanyName] = useState(CONFIG.companyName);
-            const [dividendSettings, setDividendSettings] = useState(CONFIG.dividends);
-            const [subscriptionPrice, setSubscriptionPrice] = useState(CONFIG.subscriptionPrice);
-
-            // --- 文件區狀態 ---
-            const [selectedDocId, setSelectedDocId] = useState('doc1');
-            const [signMethod, setSignMethod] = useState('online'); 
-            const [signatureImg, setSignatureImg] = useState(null);
-            const [isProcessing, setIsProcessing] = useState(false);
-
-            const [errors, setErrors] = useState({});
-            const [isCapturing, setIsCapturing] = useState(false);
-
-            const handleNumChange = (setter) => (e) => {
-                const raw = e.target.value.replace(/,/g, ''); 
-                if (raw === '' || !isNaN(raw)) setter(raw);
-            };
-
-            const handleShareTypeChange = (typeId) => (e) => {
-                if (isVerified) return; 
-                const raw = e.target.value.replace(/,/g, ''); 
-                if (raw === '' || !isNaN(raw)) {
-                    setSharesMap(prev => ({ ...prev, [typeId]: raw }));
-                }
-            };
-
-            const handleDividendChange = (index, newVal) => {
-                const updated = [...dividendSettings];
-                updated[index].amount = newVal;
-                setDividendSettings(updated);
-            };
-
-            const handleShareholderSelect = (e) => {
-                const sid = e.target.value;
-                setShareholderId(sid);
-                setIsVerified(false);
-                setInputVerifyCode('');
-                setName('');
-                const resetShares = {};
-                CONFIG.shareTypes.forEach(t => resetShares[t.id] = '');
-                setSharesMap(resetShares);
-                setWillingToOffset(false);
-                setOffsetShares('');
-                setAdditionalShares('');
-            };
-
-            // --- 身份驗證核心 ---
-            const handleVerifyIdentity = async () => {
-                if (!shareholderId) return;
-                if (!inputVerifyCode) {
-                    alert("請輸入驗證碼");
-                    return;
-                }
-                setIsVerifying(true);
-
-                if (CONFIG.n8nApiUrl) {
-                    try {
-                        const response = await fetch(CONFIG.n8nApiUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ type: 'verify', shareholderId: shareholderId, code: inputVerifyCode })
-                        });
-                        
-                        if (!response.ok) {
-                             throw new Error(`伺服器回應錯誤: ${response.status}`);
-                        }
-
-                        const data = await response.json();
-                        
-                        if (data.success) {
-                            setIsVerified(true);
-                            setName(data.name);
-                            if (data.shares) {
-                                if (typeof data.shares === 'object') {
-                                    setSharesMap(prev => ({...prev, ...data.shares}));
-                                } else {
-                                    const firstType = CONFIG.shareTypes[0].id;
-                                    setSharesMap(prev => ({...prev, [firstType]: data.shares}));
-                                }
-                            }
-                            alert(`驗證成功！歡迎 ${data.name} 股東。`);
-                        } else {
-                            alert("驗證失敗：驗證碼錯誤或系統無此資料。");
-                            setInputVerifyCode('');
-                        }
-                    } catch (e) {
-                        console.error("Verification Error", e);
-                        alert(`連線驗證伺服器失敗。\n原因: ${e.message}\n請確認 Worker 網址或 n8n 是否正常運作。`);
-                    }
-                } else {
-                    // 測試模式
-                    await new Promise(r => setTimeout(r, 1000));
-                    if (inputVerifyCode === '1196' || inputVerifyCode === '8888') {
-                        setIsVerified(true);
-                        setName("蔡昀達 (測試)");
-                        setSharesMap({ voting_shares: "2", preferred_yi: "0" });
-                        alert("【測試模式】驗證成功！");
-                    } else {
-                        alert("【測試模式】驗證碼錯誤 (測試碼: 1196)");
-                    }
-                }
-                setIsVerifying(false);
-            };
-
-            const result = useMemo(() => {
-                let totalShares = 0;
-                Object.values(sharesMap).forEach(val => { totalShares += (Number(val) || 0); });
-                if (totalShares <= 0) return null;
-
-                const dividendResults = dividendSettings.map(setting => {
-                    const gross = Math.floor(totalShares * setting.amount);
-                    let hi = 0;
-                    if (type === 'natural' && gross >= CONFIG.tax.threshold) hi = Math.floor(gross * CONFIG.tax.rate);
-                    return { ...setting, gross, hi, net: gross - hi };
-                });
-
-                const totalNetDividend = dividendResults.reduce((sum, item) => sum + item.net, 0);
-                let maxOffsetSharesPossible = 0;
-                if (subscriptionPrice > 0) maxOffsetSharesPossible = Math.floor(totalNetDividend / subscriptionPrice);
-
-                let finalOffsetShares = 0;
-                let finalOffsetCost = 0;
-                if (willingToOffset) {
-                    let input = Number(offsetShares) || 0;
-                    if (input > maxOffsetSharesPossible) input = maxOffsetSharesPossible;
-                    finalOffsetShares = input;
-                    finalOffsetCost = finalOffsetShares * subscriptionPrice;
-                }
-
-                let extraShares = Number(additionalShares) || 0;
-                let extraCost = extraShares * subscriptionPrice;
-
-                return {
-                    totalShares, dividendResults, totalNetDividend, maxOffsetSharesPossible,
-                    finalOffsetShares, finalOffsetCost, extraShares, extraCost,
-                    totalNewShares: finalOffsetShares + extraShares,
-                    totalCost: finalOffsetCost + extraCost,
-                    remainingDividendCash: totalNetDividend - finalOffsetCost,
-                    finalBalance: (totalNetDividend - finalOffsetCost) - extraCost
-                };
-            }, [sharesMap, dividendSettings, type, willingToOffset, offsetShares, additionalShares, subscriptionPrice]);
-
-            const handleGeneratePDF = async (action) => {
-                if (!shareholderId) { alert("請先選擇股東身分！"); return; }
-                
-                // ★★★ 改在這裡才呼叫，避免初始化錯誤 ★★★
-                if (!window.jspdf) { alert("PDF 元件尚未載入，請重新整理"); return; }
+            // 3. Generate PDF
+            html2canvas(document.getElementById('docPreview')).then(c => {
                 const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+                const imgData = c.toDataURL('image/png');
+                const props = doc.getImageProperties(imgData);
+                const pdfWidth = doc.internal.pageSize.getWidth();
+                const pdfHeight = (props.height * pdfWidth) / props.width;
 
-                setIsProcessing(true);
-                const input = document.getElementById(`doc-preview-${selectedDocId}`);
-                
-                try {
-                    const canvas = await html2canvas(input, { scale: 2, useCORS: true });
-                    const imgData = canvas.toDataURL('image/png');
-                    const pdf = new jsPDF('p', 'mm', 'a4');
-                    const pdfWidth = pdf.internal.pageSize.getWidth();
-                    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-                    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-                    const filename = `${shareholderId}_${name}_${CONFIG.documents.find(d=>d.id===selectedDocId).title}.pdf`;
-
-                    if (action === 'download') {
-                        pdf.save(filename);
-                        alert("文件下載成功！請列印並用印後，拍照上傳。");
-                    } else if (action === 'submit') {
-                        if (CONFIG.n8nApiUrl) {
-                            const pdfBlob = pdf.output('blob');
-                            const reader = new FileReader();
-                            reader.readAsDataURL(pdfBlob);
-                            reader.onloadend = async function() {
-                                const base64data = reader.result;
-                                try {
-                                    await fetch(CONFIG.n8nApiUrl, {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ type: 'submit_doc', shareholderId, filename, file: base64data })
-                                    });
-                                    alert(`已成功送出！\n檔案將自動歸檔。`);
-                                } catch(e) { alert("上傳失敗，請檢查網路。"); }
-                            }
-                        } else {
-                            await new Promise(r => setTimeout(r, 1500));
-                            alert(`【測試模式】已成功送出！`);
-                        }
-                    }
-                } catch (err) { console.error(err); alert("文件生成失敗"); }
-                setIsProcessing(false);
-            };
-
-            const handleFileUpload = async (e, type) => {
-                const file = e.target.files[0];
-                if (!file || !shareholderId) { alert("請先選擇股東身分！"); return; }
-                setIsProcessing(true);
-                if (CONFIG.n8nApiUrl) {
-                    const reader = new FileReader();
-                    reader.readAsDataURL(file);
-                    reader.onloadend = async function() {
-                        const base64data = reader.result;
-                        try {
-                            await fetch(CONFIG.n8nApiUrl, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ type: 'proof' === type ? 'submit_proof' : 'submit_signed_paper', shareholderId, filename: file.name, file: base64data })
-                            });
-                            alert(`${file.name} 上傳成功！`);
-                        } catch(e) { alert("上傳失敗"); }
-                        setIsProcessing(false);
-                    }
-                } else {
-                    await new Promise(r => setTimeout(r, 1500));
-                    alert(`【測試模式】${file.name} 上傳成功！`);
-                    setIsProcessing(false);
-                }
-                e.target.value = '';
-            };
-
-            const handleDownloadImage = () => {
-                const element = document.getElementById('print-section');
-                if(!element) return;
-                setIsCapturing(true);
-                html2canvas(element, { scale: 2, backgroundColor: '#ffffff' }).then(canvas => {
-                    const link = document.createElement('a');
-                    link.href = canvas.toDataURL('image/png');
-                    link.download = `股利試算確認單_${name}.png`;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    setIsCapturing(false);
-                });
-            };
-
-            return (
-                <div className="pb-20">
-                    <header className="mb-6 text-center no-print pt-6"><h1 className="text-4xl font-extrabold text-slate-800 tracking-tight">{CONFIG.systemName}</h1></header>
-                    <div className="bg-white shadow-xl rounded-xl border border-slate-200 card overflow-hidden">
-                        
-                        <div className="flex border-b border-slate-200 bg-slate-50/50 no-print">
-                            {CONFIG.tabs.showCalculation && <button onClick={() => setActiveTab('calculation')} className={`flex-1 py-4 text-center font-bold text-lg transition duration-200 ${activeTab === 'calculation' ? 'text-blue-600 border-b-4 border-blue-600 bg-white' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}><i className="fas fa-calculator mr-2"></i>股利增資試算</button>}
-                            {CONFIG.tabs.showDocs && <button onClick={() => setActiveTab('docs')} className={`flex-1 py-4 text-center font-bold text-lg transition duration-200 ${activeTab === 'docs' ? 'text-blue-600 border-b-4 border-blue-600 bg-white' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}><i className="fas fa-file-contract mr-2"></i>股東文件區</button>}
-                        </div>
-
-                        {activeTab === 'calculation' && (
-                            <div className="fade-in">
-                                <div className="bg-slate-800 text-white p-6 no-print">
-                                    <div className="flex justify-between items-center mb-4">
-                                        <h2 className="font-bold text-xl"><i className="fas fa-cog mr-2"></i>試算參數</h2>
-                                        {CONFIG.allowUserEditParams && <button onClick={() => setIsEditMode(!isEditMode)} className="text-sm bg-slate-700 hover:bg-slate-600 px-4 py-2 rounded transition">{isEditMode ? '鎖定參數' : '修改參數'}</button>}
-                                    </div>
-                                    {isEditMode ? (
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-base">
-                                            <div className="md:col-span-2"><label className="block text-slate-400 mb-2">公司名稱</label><input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded p-3 text-white" /></div>
-                                            {dividendSettings.map((div, index) => (
-                                                <div key={div.id}><label className="block text-slate-400 mb-2">{div.label}</label><input type="text" value={formatInput(div.amount)} onChange={(e) => { const val = e.target.value.replace(/,/g, ''); if (val === '' || !isNaN(val)) handleDividendChange(index, val); }} className="w-full bg-slate-700 border border-slate-600 rounded p-3 text-white" /></div>
-                                            ))}
-                                            <div className="md:col-span-2"><label className="block text-slate-400 mb-2">現金增資價格</label><input type="text" value={formatInput(subscriptionPrice)} onChange={handleNumChange(setSubscriptionPrice)} className="w-full bg-slate-700 border border-slate-600 rounded p-3 text-white" /></div>
-                                        </div>
-                                    ) : (
-                                        <div className="flex flex-wrap gap-4 text-base"><div className="w-full font-bold text-xl mb-2">{companyName}</div>{dividendSettings.map(div => (<div key={div.id} className="bg-slate-700 px-4 py-2 rounded"><span className="text-slate-400">{div.label}：</span>${formatInput(div.amount)}</div>))}<div className="bg-slate-700 px-4 py-2 rounded"><span className="text-slate-400">增資價格：</span>${formatInput(subscriptionPrice)}</div></div>
-                                    )}
-                                </div>
-
-                                <div className="p-8 md:p-10">
-                                    <div className="text-center mb-10 no-print">
-                                        <h2 className="text-3xl font-bold text-slate-800">現金增資認購意願試算表</h2>
-                                        <p className="text-slate-500 mt-3 text-base">含現金股利抵繳試算</p>
-                                    </div>
-
-                                    <div className="bg-blue-50 border-l-8 border-blue-500 mb-10 rounded-r-lg shadow-sm no-print overflow-hidden">
-                                        <div className="p-4 flex justify-between items-center cursor-pointer hover:bg-blue-100 transition-colors" onClick={() => setIsTimelineExpanded(!isTimelineExpanded)}>
-                                            <h3 className="text-xl font-bold text-blue-800 flex items-center"><i className="fas fa-calendar-alt mr-3"></i>FY2026-主要事件時程</h3>
-                                            <div className="flex items-center text-blue-600 text-sm font-bold"><span className="mr-2">{isTimelineExpanded ? '收合' : '點擊展開'}</span><i className={`fas fa-chevron-down transition-transform duration-300 ${isTimelineExpanded ? 'rotate-180' : ''}`}></i></div>
-                                        </div>
-                                        <div className={`accordion-content ${isTimelineExpanded ? 'expanded' : ''}`}>
-                                            <div className="p-6 pt-0 border-t border-blue-100 mt-2">
-                                                <ul className="space-y-3 text-slate-700 font-medium text-base">
-                                                    <li>3/28 股東會通過2025應付股利</li>
-                                                    <li>5月調查7月現金增資意願及金額範圍</li>
-                                                    <li>7/6~7/10 結帳公布6/30淨值+決議2026H1應付股利+公辦增資價格</li>
-                                                    <li>7/20~7/29 股利原地轉增資收件</li>
-                                                    <li>7/20~7/29 現金增資收件+匯款</li>
-                                                    <li>8/17~8/21 2025股利匯款+2026H1股利匯款</li>
-                                                </ul>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-8 no-print">
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                            {/* ★★★ 試算頁：身份驗證模組 ★★★ */}
-                                            <div>
-                                                <label className="block text-base font-bold text-slate-700 mb-2">股東身分驗證 <span className="text-red-500">*</span></label>
-                                                {!isVerified ? (
-                                                    <div className="space-y-3">
-                                                        <select className="w-full p-3 border border-slate-300 rounded-lg bg-white focus:ring-2 focus:ring-blue-500 outline-none" value={shareholderId} onChange={handleShareholderSelect}>
-                                                            <option value="">-- 請選擇股東戶號 --</option>
-                                                            {CONFIG.shareholderOptions.map(opt => (<option key={opt.id} value={opt.id}>{opt.label}</option>))}
-                                                        </select>
-                                                        {shareholderId && (
-                                                            <div className="flex gap-2 fade-in">
-                                                                <input type="password" placeholder="請輸入驗證碼" className="flex-1 p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" value={inputVerifyCode} onChange={(e) => setInputVerifyCode(e.target.value)} />
-                                                                <button onClick={handleVerifyIdentity} disabled={isVerifying} className="bg-blue-600 text-white px-4 py-2 rounded-lg whitespace-nowrap font-bold hover:bg-blue-700 disabled:opacity-50">{isVerifying ? '驗證中' : '驗證'}</button>
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                ) : (
-                                                    <div className="bg-green-50 border border-green-200 p-4 rounded-lg fade-in">
-                                                        <div className="flex justify-between items-center mb-2"><span className="font-bold text-green-800 text-lg"><i className="fas fa-user-check mr-2"></i>{name}</span><button onClick={() => { setIsVerified(false); setShareholderId(''); setName(''); setInputVerifyCode(''); const r={}; CONFIG.shareTypes.forEach(t=>r[t.id]=''); setSharesMap(r); }} className="text-xs text-red-500 hover:text-red-700 underline">重新選擇</button></div>
-                                                        <div className="text-sm text-green-600">股東戶號: {shareholderId} | 狀態: 已驗證</div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                            
-                                            {/* 動態生成多種股份顯示框 (驗證後自動鎖定) */}
-                                            <div className="md:col-span-2">
-                                                <label className="block text-base font-bold text-slate-700 mb-3">持有股數 (驗證後自動帶入)</label>
-                                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                                    {CONFIG.shareTypes.map(t => (
-                                                        <div key={t.id}>
-                                                            <div className="text-sm text-slate-500 mb-1">{t.name}</div>
-                                                            <input type="text" className={`w-full p-3 border rounded-lg ${isVerified ? 'bg-slate-100 text-slate-600 cursor-not-allowed' : 'bg-white focus:ring-2 focus:ring-blue-500'}`} value={formatInput(sharesMap[t.id])} onChange={handleShareTypeChange(t.id)} placeholder="0" readOnly={isVerified} />
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                                {result && <div className="text-right mt-2 text-sm text-slate-600">合計總股數：<span className="font-bold text-lg text-blue-600">{formatInput(result.totalShares)}</span></div>}
-                                            </div>
-                                        </div>
-                                        
-                                        <div className="flex gap-6">
-                                            <label className={`flex-1 p-4 border rounded-lg cursor-pointer flex items-center justify-center gap-3 ${type === 'natural' ? 'bg-blue-50 border-blue-500 text-blue-700' : ''}`}><input type="radio" checked={type === 'natural'} onChange={() => setType('natural')} className="hidden" />自然人</label>
-                                            <label className={`flex-1 p-4 border rounded-lg cursor-pointer flex items-center justify-center gap-3 ${type === 'legal' ? 'bg-purple-50 border-purple-500 text-purple-700' : ''}`}><input type="radio" checked={type === 'legal'} onChange={() => setType('legal')} className="hidden" />法人</label>
-                                        </div>
-
-                                        {result && (
-                                            <>
-                                                <div className="bg-slate-50 p-6 rounded-lg"><div className="flex justify-between font-bold text-xl text-blue-600"><span>可運用股利總淨額</span><span>{formatMoney(result.totalNetDividend)}</span></div></div>
-                                                <div className="pt-8 border-t">
-                                                    <label className="flex items-center gap-4 cursor-pointer mb-6"><input type="checkbox" checked={willingToOffset} onChange={e => setWillingToOffset(e.target.checked)} className="w-6 h-6" /><span className="text-lg font-bold">我願意以股利抵繳</span></label>
-                                                    {willingToOffset && (
-                                                        <div className="bg-green-50 p-6 rounded-lg mb-6"><div className="flex justify-between items-center"><div><label className="block font-bold text-green-800">欲抵繳股數</label><input type="text" className="bg-transparent border-b-2 border-green-300 text-2xl font-bold text-green-700 w-32" value={formatInput(offsetShares)} onChange={handleNumChange(setOffsetShares)} placeholder="0" /></div><div className="text-right"><div className="text-sm text-green-600">抵繳金額</div><div className="text-2xl font-bold text-green-700">{formatMoney(result.finalOffsetCost)}</div></div></div></div>
-                                                    )}
-                                                    {(() => {
-                                                        const currentOffset = Number(offsetShares) || 0;
-                                                        const isLocked = CONFIG.forceFullOffset && result.maxOffsetSharesPossible > 0 && (!willingToOffset || currentOffset < result.maxOffsetSharesPossible);
-                                                        return (
-                                                            <div className={`mt-8 ${isLocked ? 'opacity-50' : ''}`}><label className="block font-bold mb-3">額外現金認購股數</label><div className="bg-yellow-50 p-6 rounded-lg flex justify-between"><input type="text" disabled={isLocked} className="bg-transparent border-b-2 border-yellow-300 text-2xl font-bold text-yellow-800 w-32" value={formatInput(additionalShares)} onChange={handleNumChange(setAdditionalShares)} placeholder="0" /><div className="text-right"><div className="text-sm text-yellow-700">額外金額</div><div className="text-2xl font-bold text-yellow-800">{formatMoney(result.extraCost)}</div></div></div></div>
-                                                        );
-                                                    })()}
-                                                </div>
-                                            </>
-                                        )}
-                                    </div>
-
-                                    {result && (
-                                        <div id="print-section" className="mt-12 border-4 border-slate-800 rounded-xl p-8 bg-white print-border">
-                                            <div className="text-center mb-4"><h3 className="text-2xl font-bold">{companyName}</h3><p>試算確認單</p></div>
-                                            <div className="grid grid-cols-2 gap-4 text-base">
-                                                <div>姓名：{name}</div><div className="text-right">總持有：{formatInput(result.totalShares)} 股</div>
-                                                <div className="col-span-2 border-b border-dashed my-2"></div>
-                                                <div>1. 股利總淨額</div><div className="text-right font-bold text-blue-700">{formatMoney(result.totalNetDividend)}</div>
-                                                <div className="col-span-2 bg-slate-50 p-3 rounded text-sm text-slate-600 space-y-1 mt-1 border border-slate-100">
-                                                    {result.dividendResults.map((item) => (
-                                                        <div key={item.id} className="flex justify-between"><span>{item.label}:</span><span>{formatMoney(item.gross)} (稅前) {item.hi > 0 ? ` - ${formatMoney(item.hi)} (二代健保)` : ''} = <b>{formatMoney(item.net)}</b></span></div>
-                                                    ))}
-                                                </div>
-                                                <div>2. 認購新股 ({formatInput(result.totalNewShares)}股)</div><div className="text-right text-red-600">-{formatMoney(result.totalCost)}</div>
-                                                <div className="col-span-2 border-b border-black my-2"></div>
-                                                <div className="font-bold text-lg">應收付淨額</div>
-                                                <div className={`text-right font-bold text-2xl ${result.finalBalance >= 0 ? 'text-blue-700' : 'text-red-600'}`}>{formatMoney(Math.abs(result.finalBalance))} <span className="text-sm">{result.finalBalance >= 0 ? '(公司應付)' : '(股東應補)'}</span></div>
-                                            </div>
-                                            <div className="text-center mt-6 no-print">
-                                                <button onClick={handleDownloadImage} disabled={isCapturing} className="bg-blue-600 text-white px-6 py-3 rounded-full shadow hover:bg-blue-700">{isCapturing ? '生成中...' : '下載確認單圖片'}</button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === 'docs' && (
-                            <div className="fade-in bg-slate-50 min-h-screen">
-                                <div className="bg-white p-6 shadow-sm border-b sticky top-0 z-10">
-                                    <div className="flex justify-between items-center mb-3">
-                                        <h3 className="font-bold text-lg flex items-center text-slate-700"><div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mr-2">1</div>身份驗證</h3>
-                                        <span className={`text-xs px-2 py-1 rounded ${CONFIG.n8nApiUrl ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{CONFIG.n8nApiUrl ? '🟢 連線至 n8n 斷點' : '⚪ 測試模式 (無資料庫)'}</span>
-                                    </div>
-                                    <div className="space-y-4">
-                                        {!isVerified ? (
-                                            <div className="space-y-3">
-                                                <select className="w-full p-3 border border-slate-300 rounded-lg text-lg bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none" value={shareholderId} onChange={handleShareholderSelect}>
-                                                    <option value="">-- 請選擇股東戶號 --</option>
-                                                    {CONFIG.shareholderOptions.map(opt => (<option key={opt.id} value={opt.id}>{opt.label}</option>))}
-                                                </select>
-                                                {shareholderId && (
-                                                    <div className="flex gap-2 fade-in">
-                                                        <input type="password" placeholder="請輸入驗證碼" className="flex-1 p-3 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" value={inputVerifyCode} onChange={(e) => setInputVerifyCode(e.target.value)} />
-                                                        <button onClick={handleVerifyIdentity} disabled={isVerifying} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-blue-700 disabled:opacity-50">{isVerifying ? '驗證中...' : '驗證'}</button>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg flex items-center fade-in">
-                                                <i className="fas fa-check-circle text-xl mr-3"></i>
-                                                <div><p className="font-bold">驗證成功</p><p className="text-sm">歡迎回來，{name} (總持有: {formatInput(result ? result.totalShares : 0)} 股)</p></div>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className={`p-6 md:p-10 space-y-10 transition-opacity duration-500 ${!isVerified ? 'opacity-30 pointer-events-none' : 'opacity-100'}`}>
-                                    <section>
-                                        <h3 className="font-bold text-lg mb-4 flex items-center text-slate-700"><div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mr-2">2</div>填寫與簽核</h3>
-                                        <div className="flex gap-2 mb-4 overflow-x-auto pb-2">{CONFIG.documents.map(doc => (<button key={doc.id} onClick={() => setSelectedDocId(doc.id)} className={`px-4 py-2 rounded-full whitespace-nowrap text-sm font-bold transition ${selectedDocId === doc.id ? 'bg-slate-800 text-white shadow-lg' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-100'}`}>{doc.title}</button>))}</div>
-                                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                                            <div className="lg:col-span-2 bg-slate-200 p-4 rounded-xl overflow-auto shadow-inner" style={{maxHeight: '800px'}}>
-                                                <DocumentPreview docId={selectedDocId} data={{ shareholderId, shareholderName: name, sharesMap, totalShares: result?.totalShares, totalNewShares: result?.totalNewShares, offsetCost: result?.finalOffsetCost, extraCost: result?.extraCost }} signatureImg={signatureImg} />
-                                            </div>
-                                            <div className="lg:col-span-1 space-y-6">
-                                                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                                                    <h4 className="font-bold mb-4 text-slate-700">簽署方式</h4>
-                                                    <div className="flex gap-2 mb-4"><button onClick={() => setSignMethod('online')} className={`flex-1 py-2 rounded-lg border ${signMethod === 'online' ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'border-slate-200 text-slate-500'}`}>線上簽核</button><button onClick={() => setSignMethod('paper')} className={`flex-1 py-2 rounded-lg border ${signMethod === 'paper' ? 'bg-blue-50 border-blue-500 text-blue-700 font-bold' : 'border-slate-200 text-slate-500'}`}>紙本上傳</button></div>
-                                                    {signMethod === 'online' ? (
-                                                        <div className="space-y-4">
-                                                            <div><p className="text-sm text-slate-500 mb-2">請在下方方框內簽名：</p><SignatureCanvas onSave={setSignatureImg} onClear={() => setSignatureImg(null)} /></div>
-                                                            <button onClick={() => handleGeneratePDF('submit')} disabled={!signatureImg || isProcessing} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md disabled:opacity-50 disabled:cursor-not-allowed">{isProcessing ? <i className="fas fa-spinner fa-spin"></i> : <><i className="fas fa-paper-plane mr-2"></i>確認簽署並送出</>}</button>
-                                                            <p className="text-xs text-slate-400 text-center">送出後系統將自動歸檔至您的專屬資料夾</p>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="space-y-4">
-                                                            <button onClick={() => handleGeneratePDF('download')} className="w-full border-2 border-slate-800 text-slate-800 py-3 rounded-lg font-bold hover:bg-slate-50"><i className="fas fa-download mr-2"></i>下載 PDF (未簽名)</button>
-                                                            <div className="border-t pt-4"><label className="block text-sm font-bold text-slate-700 mb-2">上傳已簽署文件 (拍照/掃描)</label><input type="file" accept="image/*,application/pdf" onChange={(e) => handleFileUpload(e, 'paper')} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/></div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                                                    <h3 className="font-bold text-lg mb-4 flex items-center text-slate-700"><div className="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center mr-2">3</div>匯款憑證回傳</h3>
-                                                    <div className="space-y-3"><p className="text-sm text-slate-500">完成匯款後，請上傳截圖或收據。</p><input type="file" accept="image/*,application/pdf" onChange={(e) => handleFileUpload(e, 'proof')} className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-green-50 file:text-green-700 hover:file:bg-green-100"/></div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </section>
-                                </div>
-                            </div>
-                        )}
-
-                    </div>
-                    
-                    <div className="text-center mt-10 text-slate-400 text-sm no-print">
-                        © 2025 {CONFIG.systemName} | 資料僅供試算，實際金額以公司正式通知為準
-                    </div>
-                </div>
-            );
+                doc.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                doc.save(`認購意願書-${ME.name}.pdf`);
+            });
         }
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        // --- Admin ---
+        function openAdminLogin() { document.getElementById('loginModal').style.display = 'flex'; }
+        async function admLogin() {
+            const p = document.getElementById('admPwd').value;
+            // Mock Verify for demo or REAL n8n
+            if (p == 'admin') { // Bypass for easy manual testing or use n8n
+                document.getElementById('loginModal').style.display = 'none';
+                document.getElementById('adminPanel').style.display = 'block';
+                renderAdm();
+                return;
+            }
+            try {
+                // Real n8n check
+                const r = await fetch(API, { method: 'POST', body: JSON.stringify({ type: 'verify_admin', password: p }) });
+                if ((await r.json()).success) {
+                    document.getElementById('loginModal').style.display = 'none';
+                    document.getElementById('adminPanel').style.display = 'block';
+                    renderAdm();
+                } else alert('Error');
+            } catch (e) { alert('Error'); }
+        }
+
+        function admTab(t) {
+            document.querySelectorAll('.adm-content').forEach(e => e.style.display = 'none');
+            document.getElementById('adm-' + t).style.display = 'block';
+        }
+
+        function renderAdm() {
+            const tb = document.querySelector('#tblUsers tbody');
+            tb.innerHTML = '';
+            USERS.forEach((u, i) => {
+                tb.innerHTML += `<tr>
+                <td><input value="${u.n}" onchange="USERS[${i}].n=this.value;saveAdm()"></td>
+                <td><input value="${u.id}" onchange="USERS[${i}].id=this.value;saveAdm()"></td>
+                <td><span onclick="USERS.splice(${i},1);saveAdm()" style="color:red; cursor:pointer;">x</span></td>
+            </tr>`;
+            });
+        }
+
+        function saveAdm() {
+            CFG.div = parseFloat(document.getElementById('inpDiv').value);
+            CFG.subPrice = parseFloat(document.getElementById('inpSubPrice').value);
+            localStorage.CFG = JSON.stringify(CFG);
+            localStorage.USERS = JSON.stringify(USERS);
+            renderUI();
+        }
+
+        function exportCode() {
+            const t = `var CFG = ${JSON.stringify(CFG)};\nvar USERS = ${JSON.stringify(USERS)};`;
+            document.getElementById('exportText').value = t;
+            document.getElementById('exportModal').style.display = 'flex';
+        }
+
+        // --- Tabs ---
+        function switchTab(id) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.getElementById('tab-' + id).classList.add('active');
+            document.getElementById('content-' + id).classList.add('active');
+        }
+
+        // Chart
+        function drawNet() {
+            const tbody = document.getElementById('tableNetValue');
+            tbody.innerHTML = '';
+            NET.forEach(n => tbody.innerHTML += `<tr><td>${n.p}</td><td>${n.v}</td></tr>`);
+
+            const ctx = document.getElementById('chartNetValue').getContext('2d');
+            if (chart) chart.destroy();
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: { labels: NET.map(n => n.p), datasets: [{ label: 'NAV', data: NET.map(n => n.v), borderColor: '#2563eb', tension: 0.3 }] }
+            });
+        }
     </script>
 </body>
+
 </html>
-
-
