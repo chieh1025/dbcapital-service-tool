@@ -102,6 +102,30 @@
             touch-action: none;
             /* 防止手機滑動頁面 */
         }
+
+        /* A4 fix: Ensure table borders render correctly for html2canvas PDF generation */
+        [id^="doc-preview-"] table,
+        [id^="doc-preview-"] th,
+        [id^="doc-preview-"] td {
+            border: 1px solid #334155 !important;
+            border-collapse: collapse !important;
+        }
+
+        [id^="doc-preview-"] .border,
+        [id^="doc-preview-"] .border-b,
+        [id^="doc-preview-"] .border-t,
+        [id^="doc-preview-"] .border-l,
+        [id^="doc-preview-"] .border-r {
+            border-style: solid !important;
+        }
+
+        [id^="doc-preview-"] .border-black {
+            border-color: #000 !important;
+        }
+
+        [id^="doc-preview-"] .border-slate-300 {
+            border-color: #cbd5e1 !important;
+        }
     </style>
 </head>
 
@@ -132,54 +156,31 @@
             ],
 
             dividends: [
-                { id: 'div1', label: 'FY2025股利', amount: 55000 },
-                { id: 'div2', label: '2026H1股利', amount: 15000 }
+                { id: 'div1', label: '2025股利', amount: 54700 }
             ],
 
-            subscriptionPrice: 115000,
+            subscriptionPrice: 160000,
 
-            // ★★★ 股東戶號清單 (正式版：01~38，排除跳號) ★★★
-            shareholderOptions: [
-                { id: "01", label: "01 蔡**" },
-                { id: "02", label: "02 郁*******" },
-                { id: "03", label: "03 楊**" },
-                { id: "04", label: "04 張**" },
-                { id: "05", label: "05 楊**" },
-                { id: "06", label: "06 崴*******" },
-                { id: "08", label: "08 涂**" },
-                { id: "09", label: "09 邱**" },
-                { id: "10", label: "10 林*" },
-                { id: "12", label: "12 茗*****" },
-                { id: "13", label: "13 蔡**" },
-                { id: "14", label: "14 王**" },
-                { id: "15", label: "15 郭**" },
-                { id: "16", label: "16 廖**" },
-                { id: "18", label: "18 潘**" },
-                { id: "19", label: "19 曾**" },
-                { id: "20", label: "20 展***********" },
-                { id: "21", label: "21 比*******" },
-                { id: "22", label: "22 陳**" },
-                { id: "23", label: "23 蕭**" },
-                { id: "25", label: "25 謝**" },
-                { id: "26", label: "26 金********" },
-                { id: "27", label: "27 陳**" },
-                { id: "28", label: "28 福*******" },
-                { id: "30", label: "30 賴**" },
-                { id: "31", label: "31 林**" },
-                { id: "32", label: "32 許**" },
-                { id: "33", label: "33 歐********" },
-                { id: "34", label: "34 零*******" },
-                { id: "35", label: "35 默********" },
-                { id: "36", label: "36 林**" },
-                { id: "37", label: "37 金*******" },
-                { id: "38", label: "38 貝*********" },
-                { id: "39", label: "39 赫*******" }
+            // ★★★ 股東戶號清單 (從 API 動態載入，這裡只是 fallback) ★★★
+            shareholderOptions: [],
+
+            // ★★★ 歷史淨值資料 ★★★
+            // ★★★ 歷史淨值資料 ★★★
+            netValueHistory: [
+                { month: '2026/01', nav: 12.45, market_index: '23,450', note: '', events: '' },
+                { month: '2025/12', nav: 12.30, market_index: '23,100', note: '年度結算', events: '股利發放' },
+                { month: '2025/11', nav: 12.36, market_index: '22,900', note: '', events: '' },
+                { month: '2025/10', nav: 12.15, market_index: '22,500', note: '', events: '' },
+                { month: '2025/09', nav: 12.00, market_index: '22,000', note: '', events: '現金增資' }
             ],
 
             documents: [
-                { id: "doc1", title: "增資認購意願書" },
-                { id: "doc2", title: "股東個資同意書 (預留)" },
-                { id: "doc3", title: "放棄認購聲明書 (預留)" }
+                { id: "doc_offset", title: "1. 債權抵繳股款明細表", type: "paper_only", audience: "all", note: "需紙本簽核正本" },
+                { id: "doc_invest", title: "2. 現金增資投資協議書", type: "hybrid", audience: "all", note: "簽核日不得晚於 3/20" },
+                { id: "doc_client", title: "3. 客戶聲明書", type: "hybrid", audience: "all", note: "簽核日不得晚於 3/20" },
+                { id: "doc_aml_nat", title: "4. 洗錢防制聲明書 (自然人)", type: "hybrid", audience: "natural", note: "" },
+                { id: "doc_aml_leg", title: "5. 洗錢防制聲明書 (法人)", type: "hybrid", audience: "legal", note: "" },
+                { id: "doc_beneficial", title: "6. 所有權人/實質受益人聲明書", type: "hybrid", audience: "legal", note: "簽核日不得晚於 3/20" }
             ]
         };
 
@@ -277,220 +278,751 @@
         // ==========================================
         // ★★★ 文件渲染元件 ★★★
         // ==========================================
-        function DocumentPreview({ docId, data, signatureImg, config }) {
-            const date = new Date();
+        function DocumentPreview({ docId, data, signatureImg, config, fundSources, onToggleFundSource }) {
+            const now = new Date();
+            const deadline = new Date(2026, 2, 20); // 115年3月20日
+            const date = now > deadline ? deadline : now;
+            const rocYear = date.getFullYear() - 1911;
+            const rocMonth = date.getMonth() + 1;
+            const rocDay = date.getDate();
+            const rocDateStr = `中華民國 ${rocYear} 年 ${rocMonth} 月 ${rocDay} 日`;
+
             const sharesDetail = config.shareTypes.map(type => {
                 const count = data.sharesMap?.[type.id] || 0;
                 return count > 0 ? `${type.name} ${formatInput(count)} 股` : null;
             }).filter(Boolean).join('、');
 
+            const isDigitalSignSupported = docId !== 'doc_offset'; // offset is paper only
+
             return (
                 <div id={`doc-preview-${docId}`} className="bg-white p-10 border border-slate-300 shadow-sm mx-auto text-slate-900 leading-relaxed relative" style={{ width: '100%', maxWidth: '800px', minHeight: '800px' }}>
-                    <div className="text-center mb-8 border-b-2 border-slate-800 pb-4">
-                        <h2 className="text-2xl font-bold">{config.companyName}</h2>
-                        <h3 className="text-xl font-bold mt-2">{config.documents.find(d => d.id === docId)?.title || "文件"}</h3>
-                        <p className="text-sm text-slate-500 mt-1">文件編號: 2025-{docId.toUpperCase()}-{data.shareholderId || 'XXX'}</p>
-                    </div>
+                    <div className="space-y-6 text-base">
 
-                    {docId === 'doc1' && (
-                        <div className="space-y-6 text-base">
-                            <p><strong>立書人 (股東姓名)：</strong><u>&nbsp;&nbsp;{data.shareholderName || '____________'}&nbsp;&nbsp;</u><br /><strong>股東戶號：</strong><u>&nbsp;&nbsp;{data.shareholderId || '____________'}&nbsp;&nbsp;</u></p>
-                            <p>茲確認本人持有貴公司股票共計 <strong>{formatInput(data.totalShares) || '0'}</strong> 股{sharesDetail && <span className="text-sm text-slate-600"> ({sharesDetail})</span>}，並同意參與貴公司 114 年度現金增資計畫。</p>
-                            <table className="w-full border-collapse border border-slate-400 my-4 text-sm">
-                                <thead><tr className="bg-slate-100"><th className="border border-slate-400 p-2">項目</th><th className="border border-slate-400 p-2">內容</th><th className="border border-slate-400 p-2">金額/股數</th></tr></thead>
-                                <tbody>
-                                    <tr><td className="border border-slate-400 p-2">現金股利抵繳</td><td className="border border-slate-400 p-2">同意以現金股利全額/部分抵充股款</td><td className="border border-slate-400 p-2">{formatMoney(data.offsetCost || 0)}</td></tr>
-                                    <tr><td className="border border-slate-400 p-2">現金認購</td><td className="border border-slate-400 p-2">額外匯款認購股數</td><td className="border border-slate-400 p-2">{formatMoney(data.extraCost || 0)}</td></tr>
-                                    <tr className="bg-slate-50 font-bold"><td className="border border-slate-400 p-2" colSpan="2">本次增資認購總股數</td><td className="border border-slate-400 p-2 text-blue-600">{formatInput(data.totalNewShares || 0)} 股</td></tr>
-                                </tbody>
-                            </table>
-                            <p>本人瞭解並同意，上述認購款項若未於繳款期限內完成繳納 (含股利抵繳確認)，視同放棄本次認購權利。</p>
-                            <div className="mt-12 pt-8">
-                                <div className="flex justify-between items-end">
-                                    <div className="w-1/2">
-                                        <p className="mb-2 font-bold">股東簽章：</p>
-                                        <div className="h-24 border-b border-slate-400 relative">
-                                            {signatureImg ? <img src={signatureImg} className="h-full absolute bottom-0 left-0" alt="簽名" /> : <span className="text-slate-300 text-sm absolute bottom-2">請在此簽名或蓋章</span>}
-                                        </div>
+                        {/* --- 1. 債權抵繳 (Offset) --- */}
+                        {docId === 'doc_offset' && (
+                            <>
+                                <div className="text-center mb-8 pt-8">
+                                    <h4 className="text-2xl font-bold font-serif tracking-widest mb-1">達飆資本股份有限公司</h4>
+                                    <h4 className="text-xl font-bold font-serif tracking-wide mb-2">債權抵繳股款明細表</h4>
+                                    <p className="text-lg font-serif">中華民國 115 年 3 月 8 日</p>
+                                </div>
+
+                                <div className="w-full text-right mb-1 text-sm font-serif">單位：新台幣元</div>
+                                <table className="w-full border-collapse border border-slate-900 text-center mb-8 font-serif bg-white table-fixed">
+                                    <colgroup>
+                                        <col style={{width: '10%'}} />
+                                        <col style={{width: '12%'}} />
+                                        <col style={{width: '12%'}} />
+                                        <col style={{width: '9%'}} />
+                                        <col style={{width: '14%'}} />
+                                        <col style={{width: '17%'}} />
+                                        <col style={{width: '13%'}} />
+                                        <col style={{width: '13%'}} />
+                                    </colgroup>
+                                    <thead>
+                                        <tr>
+                                            <th className="border border-slate-900 p-2 align-middle bg-white text-black font-bold" rowSpan="2">帳載科目</th>
+                                            <th className="border border-slate-900 p-2 align-middle bg-white text-black font-bold" colSpan="5">債權情形</th>
+                                            <th className="border border-slate-900 p-2 align-middle bg-white text-black font-bold" colSpan="2">抵繳情形</th>
+                                        </tr>
+                                        <tr>
+                                            <th className="border border-slate-900 p-2 align-middle bg-white text-black font-bold">債權人<br />姓名</th>
+                                            <th className="border border-slate-900 p-2 align-middle bg-white text-black font-bold">債權發生<br />原因</th>
+                                            <th className="border border-slate-900 p-2 align-middle bg-white text-black font-bold">借入<br />日期</th>
+                                            <th className="border border-slate-900 p-2 align-middle bg-white text-black font-bold">債權金額</th>
+                                            <th className="border border-slate-900 p-2 align-middle bg-white text-black font-bold">債權發生之<br />主要證明文件</th>
+                                            <th className="border border-slate-900 p-2 align-middle bg-white text-black font-bold">抵繳資本</th>
+                                            <th className="border border-slate-900 p-2 align-middle bg-white text-black font-bold">抵繳後<br />餘額</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(() => {
+                                            const grossDiv = data.totalGrossDividend || 0;
+                                            const hi = data.healthInsuranceDeduction || 0;
+                                            const netDiv = grossDiv - hi;
+                                            const offsetAmount = Math.min(netDiv, data.extraCost || 0);
+                                            const remaining = grossDiv - offsetAmount;
+                                            return (
+                                        <tr>
+                                            <td className="border border-slate-900 p-3 font-bold bg-slate-50">應付股利</td>
+                                            <td className="border border-slate-900 p-3">{data.shareholderName}</td>
+                                            <td className="border border-slate-900 p-3 text-sm">114年盈餘分派</td>
+                                            <td className="border border-slate-900 p-3">115.03.08</td>
+                                            <td className="border border-slate-900 p-3 font-mono">{formatInput(grossDiv)}</td>
+                                            <td className="border border-slate-900 p-3 text-sm">盈餘分配表、股東會議事錄</td>
+                                            <td className="border border-slate-900 p-3 font-mono">{formatInput(offsetAmount)}</td>
+                                            <td className="border border-slate-900 p-3 font-mono">{formatInput(remaining)}</td>
+                                        </tr>
+                                            );
+                                        })()}
+                                    </tbody>
+                                </table>
+
+                                <div className="space-y-8 mt-4 font-serif">
+                                    <p className="font-bold text-lg tracking-wide">債權人簽認：以上所列本人等之債權，同意將其抵繳資本，特此簽認。</p>
+
+                                    <div className="mt-12 flex items-baseline">
+                                        <span className="text-xl font-bold mr-4">債權人或股東：</span>
+                                        <span className="text-2xl px-4 min-w-[200px] inline-block text-center font-bold font-kai">{data.shareholderName}</span>
                                     </div>
-                                    <div className="text-right"><p>中華民國 &nbsp;{date.getFullYear() - 1911}&nbsp; 年 &nbsp;{date.getMonth() + 1}&nbsp; 月 &nbsp;{date.getDate()}&nbsp; 日</p></div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    {(docId !== 'doc1') && <div className="text-center py-20 text-slate-400"><i className="fas fa-file-contract text-6xl mb-4"></i><p>此文件範本尚未啟用</p></div>}
-                    <div className="absolute bottom-4 left-0 w-full text-center text-xs text-slate-400">{config.systemName} - 電子文件系統</div>
-                </div>
-            );
-        }
 
-        // ==========================================
-        // ★★★ Admin Panel 元件 ★★★
-        // ==========================================
-        function AdminPanel({ isOpen, onClose, config, onConfigChange }) {
-            const [password, setPassword] = useState('');
-            const [isAuthenticated, setIsAuthenticated] = useState(false);
-            const [localConfig, setLocalConfig] = useState(config);
-
-            useEffect(() => {
-                if (isOpen) {
-                    setLocalConfig(config);
-                }
-            }, [isOpen, config]);
-
-            const handleLogin = () => {
-                if (password === '8888') {
-                    setIsAuthenticated(true);
-                    setLocalConfig(config); // Reset local config to current
-                } else {
-                    alert('密碼錯誤');
-                }
-            };
-
-            const handleSave = () => {
-                onConfigChange(localConfig);
-                onClose();
-            };
-
-            const updateDividend = (idx, field, val) => {
-                const newDivs = [...localConfig.dividends];
-                newDivs[idx][field] = val;
-                setLocalConfig({ ...localConfig, dividends: newDivs });
-            };
-
-            if (!isOpen) return null;
-
-            return (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                    <div className="bg-white rounded-lg p-6 w-full max-w-lg mx-4 shadow-2xl">
-                        <div className="flex justify-between items-center mb-4">
-                            <h2 className="text-xl font-bold text-slate-800">管理後台</h2>
-                            <button onClick={onClose} className="text-slate-500 hover:text-slate-700"><i className="fas fa-times"></i></button>
-                        </div>
-
-                        {!isAuthenticated ? (
-                            <div className="space-y-4">
-                                <p className="text-sm text-slate-600">請輸入管理員密碼以修改參數配置。</p>
-                                <input
-                                    type="password"
-                                    className="w-full p-2 border rounded"
-                                    placeholder="輸入密碼"
-                                    value={password}
-                                    onChange={e => setPassword(e.target.value)}
-                                    onKeyDown={e => e.key === 'Enter' && handleLogin()}
-                                />
-                                <button onClick={handleLogin} className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">登入</button>
-                            </div>
-                        ) : (
-                            <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
-                                <div>
-                                    <label className="block text-sm font-bold mb-1">公司名稱</label>
-                                    <input
-                                        type="text"
-                                        className="w-full p-2 border rounded bg-slate-50"
-                                        value={localConfig.companyName}
-                                        onChange={e => setLocalConfig({ ...localConfig, companyName: e.target.value })}
-                                    />
-                                </div>
-                                <div className="border-t pt-4">
-                                    <h3 className="font-bold mb-2">股利設定</h3>
-                                    {localConfig.dividends.map((div, idx) => (
-                                        <div key={div.id} className="flex gap-2 mb-2">
-                                            <input
-                                                type="text"
-                                                className="w-1/2 p-2 border rounded text-sm"
-                                                value={div.label}
-                                                onChange={e => updateDividend(idx, 'label', e.target.value)}
-                                            />
-                                            <input
-                                                type="number"
-                                                className="w-1/2 p-2 border rounded text-sm"
-                                                value={div.amount}
-                                                onChange={e => updateDividend(idx, 'amount', Number(e.target.value))}
-                                            />
-                                        </div>
-                                    ))}
-                                </div>
-                                <div className="border-t pt-4">
-                                    <h3 className="font-bold mb-2">增資設定</h3>
-                                    <label className="block text-sm text-slate-600 mb-1">認購價格 (元/股)</label>
-                                    <input
-                                        type="number"
-                                        className="w-full p-2 border rounded"
-                                        value={localConfig.subscriptionPrice}
-                                        onChange={e => setLocalConfig({ ...localConfig, subscriptionPrice: Number(e.target.value) })}
-                                    />
-                                </div>
-                                <div className="border-t pt-4">
-                                    <h3 className="font-bold mb-2">稅務設定</h3>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <div>
-                                            <label className="block text-xs text-slate-500">二代健保費率</label>
-                                            <input
-                                                type="number"
-                                                step="0.0001"
-                                                className="w-full p-2 border rounded"
-                                                value={localConfig.tax.rate}
-                                                onChange={e => setLocalConfig({ ...localConfig, tax: { ...localConfig.tax, rate: Number(e.target.value) } })}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs text-slate-500">起扣門檻</label>
-                                            <input
-                                                type="number"
-                                                className="w-full p-2 border rounded"
-                                                value={localConfig.tax.threshold}
-                                                onChange={e => setLocalConfig({ ...localConfig, tax: { ...localConfig.tax, threshold: Number(e.target.value) } })}
-                                            />
-                                        </div>
+                                    <div className="flex justify-between items-end mt-32 pt-10 px-8">
+                                        <div className="text-lg">負責人：</div>
+                                        <div className="text-lg">經理人：</div>
+                                        <div className="text-lg">主辦會計：</div>
                                     </div>
                                 </div>
-                                <div className="pt-4">
-                                    <button onClick={handleSave} className="w-full bg-green-600 text-white py-2 rounded hover:bg-green-700 shadow">儲存設定</button>
+                            </>
+                        )}
+
+                        {/* --- 2. 投資協議書 (Investment Agreement) - Reuses original logic --- */}
+                        {docId === 'doc_invest' && (
+                            <>
+                                <div className="font-serif text-sm leading-relaxed text-justify px-10 py-6">
+                                    <div className="text-center mb-6">
+                                        <h2 className="text-xl font-bold mb-1 tracking-widest">達飆資本股份有限公司</h2>
+                                        <h2 className="text-2xl font-bold tracking-[0.3em]">投資協議書</h2>
+                                    </div>
+
+                                    <div className="space-y-3 mb-4 text-base font-bold">
+                                        <div className="flex items-baseline">
+                                            <div className="w-24 shrink-0">立協議書人：</div>
+                                            <div className="flex-1 border-b border-slate-900 pb-1">達飆資本股份有限公司</div>
+                                            <div className="w-32 text-right text-red-600 shrink-0">(以下簡稱甲方)</div>
+                                        </div>
+                                        <div className="flex items-baseline">
+                                            <div className="w-24 shrink-0"></div>
+                                            <div className="flex-1 border-b border-slate-900 pb-1">{data.shareholderName}</div>
+                                            <div className="w-32 text-right text-red-600 shrink-0">(以下簡稱乙方)</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="mb-4 leading-loose">
+                                        甲方為依據公司法規定設立之閉鎖性股份有限公司，主要營業項目為一般投資業。鑑於對甲方所規劃之未來發展願景之認同，同意認購甲方所發行之特別股。<u>甲乙雙方就股份認購事宜，同意約定條款如下：</u>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        <div>
+                                            <h4 className="font-bold mb-1">一、乙方同意認購：</h4>
+                                            <ol className="list-decimal list-inside pl-4 space-y-0.5">
+                                                <li>甲種特別股 <span className="font-bold underline px-1">0</span> 股；每股單價新台幣 {formatInput(config.subscriptionPrice)} 元。</li>
+                                                <li>乙種特別股 <span className="font-bold underline px-1">{formatInput(data.totalNewShares || 0)}</span> 股；每股單價新台幣 {formatInput(config.subscriptionPrice)} 元。</li>
+                                                <li>上述總投資金額：新台幣 <span className="font-bold underline px-1">{formatMoney(data.totalCost || 0).replace('NT$', '')}</span> 元。</li>
+                                            </ol>
+                                        </div>
+
+                                        <div>
+                                            <h4 className="font-bold mb-1">二、乙方最晚應於 114 年 9 月 19 日下午 3 點 00 分前，將上述股款一次繳清匯款至甲方指定之下列帳戶，相關匯款費用由乙方負擔。</h4>
+                                            <div className="pl-6 font-bold text-xs">
+                                                <div className="flex gap-6 mt-1">
+                                                    <div className="flex-1">
+                                                        <div className="mb-1 text-sm">帳戶一（優先）：</div>
+                                                        <div>銀行：<span className="underline">永豐銀行竹北自強分行(807)</span></div>
+                                                        <div>帳號：<span className="underline">039-018-0007392-3</span></div>
+                                                        <div>戶名：<span className="underline">達飆資本股份有限公司</span></div>
+                                                    </div>
+                                                    <div className="flex-1">
+                                                        <div className="mb-1 text-sm">帳戶二：</div>
+                                                        <div>銀行：<span className="underline">國泰世華銀行六家分行(013)</span></div>
+                                                        <div>帳號：<span className="underline">139-03-005898-2</span></div>
+                                                        <div>戶名：<span className="underline">達飆資本股份有限公司</span></div>
+                                                    </div>
+                                                </div>
+                                                <div className="mt-1 text-xs text-slate-500 font-normal">※ 公司未特別通知時，以帳戶一（永豐）為優先匯款帳戶。</div>
+                                            </div>
+                                        </div>
+
+                                        <div className="leading-loose">
+                                            三、乙方完成前條所定股款繳納事宜後，乙方應提供甲方股本變更登記及資本額簽證所需資料，以協助甲方依相關程序進行變更登記事宜，相關登記費用由甲方負擔之。本次發行股份擬不印發股票，乙方同意於變更登記程序完成後，由甲方提供得表彰乙方持股權利之證明或相關文件。
+                                        </div>
+
+                                        <div className="leading-loose">
+                                            四、乙方認購之甲種、乙種特別股，其權利義務及其他重要發行條件請詳甲方於中華民國一一四年三月十六日訂定之公司章程(詳附件一)。
+                                        </div>
+
+                                        <div className="leading-loose">
+                                            五、乙方未經甲方書面同意，均不得將所知悉甲方之書面資料、商業機密暨其他經標明為機密之文件或資訊（型態包括但不限於文字、圖畫、書面、電子檔案等），以包括但不限於口頭、影印、錄影、錄音、電子檔案、電子郵件或其他任何方式為傳布、揭示或洩露予任何第三人，假若因而造成相關損失，乙方應賠償甲方此等損失。
+                                        </div>
+
+                                        <div className="leading-loose">
+                                            六、甲乙雙方就本協議所生權利義務，未經雙方書面同意，不得移轉讓與第三人。若有未盡事宜由甲乙雙方協商一致后，另行簽訂補充協議。
+                                        </div>
+
+                                        <div className="leading-loose">
+                                            七、本協議之解釋與履行應以中華民國法律為準據法。甲乙雙方若因本協議涉及訴訟時，同意以臺灣臺北地方法院為第一審管轄法院。
+                                        </div>
+
+                                        <div className="leading-loose">
+                                            八、甲乙雙方同意本協議經乙方透過甲方指定之股務系統完成電子簽署上傳遞交後即生效，甲乙雙方各以此電子檔案為憑。
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-4 text-xs text-slate-500">
+                                        附件一：達飆資本股份有限公司章程。
+                                    </div>
+
+                                    {/* ===== 立約人區塊（上下排列） ===== */}
+                                    <div className="mt-10 pt-6">
+                                        <div className="font-bold text-base tracking-[1em] mb-6">立　約　人</div>
+
+                                        {/* 甲方 */}
+                                        <div className="mb-8">
+                                            <div className="space-y-2 font-bold text-sm">
+                                                <div className="flex items-center">
+                                                    <span className="w-20 inline-block">甲　　方：</span>
+                                                    <span>達飆資本股份有限公司</span>
+                                                    <div className="flex items-end gap-2 ml-auto">
+                                                        <div className="w-20 h-20 border-2 border-red-400 rounded flex items-center justify-center text-red-400 text-xs">公司大章</div>
+                                                        <div className="w-14 h-14 border-2 border-red-400 rounded flex items-center justify-center text-red-400 text-xs">負責人章</div>
+                                                    </div>
+                                                </div>
+                                                <div className="flex"><span className="w-20 inline-block">統 一 編 號：</span><span>96625685</span></div>
+                                                <div className="flex"><span className="w-20 inline-block">代 表 人：</span><span>蔡昀達</span></div>
+                                                <div className="flex"><span className="w-20 inline-block">登 記 地 址：</span><span>新竹縣竹北市六家八街 177 號三樓</span></div>
+                                                <div className="flex"><span className="w-20 inline-block">簽 署 日 期：</span><span>{rocDateStr}</span></div>
+                                            </div>
+                                        </div>
+
+                                        {/* 乙方 */}
+                                        <div>
+                                            <div className="space-y-2 font-bold text-sm relative">
+                                                <div className="flex items-center">
+                                                    <span className="w-20 inline-block">乙　　方：</span>
+                                                    <span>{data.shareholderName}</span>
+                                                    {/* 法人：大小章格子 */}
+                                                    {data.representative && (
+                                                        <div className="flex items-end gap-2 ml-auto">
+                                                            <div className="w-20 h-20 border-2 border-red-400 rounded flex items-center justify-center text-red-400 text-xs">公司大章</div>
+                                                            <div className="w-14 h-14 border-2 border-red-400 rounded flex items-center justify-center text-red-400 text-xs">負責人章</div>
+                                                        </div>
+                                                    )}
+                                                    {/* 自然人：簽名區 */}
+                                                    {!data.representative && signatureImg && (
+                                                        <div className="ml-auto pointer-events-none">
+                                                            <img src={signatureImg} alt="Signed" className="h-16 mix-blend-multiply" />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="flex"><span className="w-20 inline-block">{data.representative ? '統 一 編 號：' : '身分證字號：'}</span><span>{data.idNumber || '____________'}</span></div>
+                                                <div className="flex"><span className="w-20 inline-block">代 表 人：</span><span>{data.representative || '無'}</span></div>
+                                                <div className="flex"><span className="w-20 inline-block">簽 署 日 期：</span><span>{rocDateStr}</span></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
+                        )}
+
+                        {/* --- 3. 客戶聲明書 (Client Statement) --- */}
+                        {docId === 'doc_client' && (
+                            <div className="font-serif text-base leading-relaxed text-justify px-12 py-8 relative">
+                                <h2 className="text-3xl font-bold text-center mb-8 tracking-widest">客　戶　聲　明　書</h2>
+
+                                <div className="mb-6 leading-loose">
+                                    茲為應 貴所辦理本人<span className="inline-block border border-black w-4 h-4 align-middle mx-1"></span>公司設立<span className="inline-block border border-black w-4 h-4 bg-black align-middle mx-1"></span>資本額簽證業務之需，謹就所知聲明如下：
+                                </div>
+
+                                <div className="space-y-6">
+                                    <div className="flex items-start">
+                                        <div className="w-10 font-bold text-lg">1、</div>
+                                        <div className="flex-1 leading-loose">
+                                            本人配合洗錢防制法之相關規定願提供 貴所因本次所委任案件所需相關文件及證明，並確認所提供之資料為真實無誤，如後續另有所需資料亦允諾配合提供。
+                                        </div>
+                                    </div>
+
+                                    <div className="flex items-start">
+                                        <div className="w-10 font-bold text-lg">2、</div>
+                                        <div className="flex-1 leading-loose">
+                                            <div>本人提供 貴所之紀錄及資料，並聲明確信下列情事：</div>
+
+                                            <div className="mt-4 pl-4 space-y-4">
+                                                <div>
+                                                    1. 本人直接投資及間接投資之公司 (含國內國外) 達 25%之出資額共計 <span className="border-b border-black px-4 font-bold">0</span> 家 (含本次投資)，明細如下：
+                                                    <table className="ml-6 mt-2 text-sm text-slate-400 w-full border-collapse">
+                                                        <thead><tr><td className="w-8"></td><td className="pb-1">名稱</td><td className="pb-1">統一編號</td><td className="pb-1">國別</td></tr></thead>
+                                                        <tbody>
+                                                            {[1,2,3].map(i => (
+                                                                <tr key={i}><td>({i})</td><td className="border-b border-slate-300 px-2">　</td><td className="border-b border-slate-300 px-2">　</td><td className="border-b border-slate-300 px-2"><span className="inline-block border border-slate-400 w-3 h-3 mr-1 align-middle"></span>國內 <span className="inline-block border border-slate-400 w-3 h-3 mr-1 align-middle"></span>國外</td></tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+
+                                                <div>
+                                                    2. 本人本次委任案件
+                                                    <div className="ml-6 mt-2 space-y-1">
+                                                        <div className="flex items-center"><span className="inline-block border border-black w-4 h-4 mr-2 bg-black"></span>無下列情形。</div>
+                                                        <div className="flex items-center"><span className="inline-block border border-black w-4 h-4 mr-2"></span>有下列情形：</div>
+                                                        <div className="ml-8 space-y-1">
+                                                            <div className="flex items-start"><span className="inline-block border border-black w-4 h-4 mr-2 mt-1"></span>2-1 分割、合併等組織調整金額占原總資產金額未達 25%。</div>
+                                                            <div className="flex items-start"><span className="inline-block border border-black w-4 h-4 mr-2 mt-1"></span>2-2 分割、合併占原總資產金額 25%以上或與國外公司等組織合併、分割等組織調整。</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    3. 本人本次委任案件
+                                                    <div className="ml-6 mt-2 space-y-1">
+                                                        <div className="flex items-center"><span className="inline-block border border-black w-4 h-4 mr-2"></span>無關資金(本)事項。</div>
+                                                        <div className="flex items-center"><span className="inline-block border border-black w-4 h-4 mr-2 bg-black"></span>有關資本(本)事項：</div>
+                                                        <div className="ml-8 space-y-1">
+                                                            <div className="flex items-center"><span className="inline-block border border-black w-4 h-4 mr-2 bg-black"></span>3-1 資金(本)來源係境內匯至指定銀行帳戶。</div>
+                                                            <div className="flex items-center"><span className="inline-block border border-black w-4 h-4 mr-2"></span>3-2 資金(本)來源係境外匯至指定銀行帳戶。</div>
+                                                            <div className="flex items-center"><span className="inline-block border border-black w-4 h-4 mr-2"></span>3-3 資金(本)來源係現金至指定銀行帳戶。</div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="leading-loose">
+                                                    4. 本人聲明所有資金來源並無洗錢防制法第 3 條所定或疑似之來源及 <span className="inline-block border border-black w-4 h-4 mx-1 bg-black align-middle"></span>未 <span className="inline-block border border-black w-4 h-4 mx-1 align-middle"></span>持有二個國家以上之護照。
+                                                </div>
+
+                                                <div className="leading-loose">
+                                                    5. 本人聲明 <span className="inline-block border border-black w-4 h-4 mx-1 bg-black align-middle"></span>未 <span className="inline-block border border-black w-4 h-4 mx-1 align-middle"></span>有 曾觸犯洗錢防制法第 3 條各款特定犯罪之罪。
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-16 space-y-2">
+                                    <div className="text-lg">此致</div>
+                                    <div className="text-xl font-bold tracking-widest pl-4">創嶼會計師事務所</div>
+                                </div>
+
+                                <div className="mt-16 text-right px-8">
+                                    <div className="inline-block text-left min-w-[300px] space-y-8">
+                                        <div className="flex items-start text-xl font-bold">
+                                            <span className="mr-4 mt-1">立書人簽章：</span>
+                                            <span className="border-b border-black flex-1 text-center font-kai text-2xl relative">
+                                                {data.shareholderName}
+                                                {!data.representative && signatureImg && <img src={signatureImg} className="absolute -top-4 left-1/2 transform -translate-x-1/2 h-16 mix-blend-multiply" alt="Signed" />}
+                                            </span>
+                                            {/* 法人：大小章格子 */}
+                                            {data.representative && (
+                                                <div className="flex items-end gap-2 ml-4">
+                                                    <div className="w-20 h-20 border-2 border-red-400 rounded flex items-center justify-center text-red-400 text-xs">公司大章</div>
+                                                    <div className="w-14 h-14 border-2 border-red-400 rounded flex items-center justify-center text-red-400 text-xs">負責人章</div>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="flex items-baseline text-lg font-bold">
+                                            <span className="mr-8">日　　期：</span>
+                                            <span>{rocYear} 年 {rocMonth} 月 {rocDay} 日</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         )}
+
+                        {/* --- 4/5. 洗錢防制 (AML) --- */}
+                        {/* --- 4. 洗錢防制 (AML) - Natural --- */}
+                        {docId === 'doc_aml_nat' && (
+                            <div className="font-serif text-base leading-relaxed text-justify px-12 py-8 relative">
+                                <h2 className="text-2xl font-bold text-center mb-4 tracking-widest">洗錢防制聲明書－公司增資</h2>
+                                <p className="text-center text-sm mb-8">本聲明書係基於洗錢防制法所做之聲明，不得用於洗錢防制風險評估、查核以外之用途。</p>
+
+                                <div className="space-y-4 font-bold text-lg mb-8">
+                                    <div className="flex justify-between">
+                                        <div className="flex-1 flex">姓　　名：<span className="border-b border-black flex-1 text-center">{data.shareholderName}</span></div>
+                                        <div className="w-8"></div>
+                                        <div className="flex-1 flex">身分證字號：<span className="border-b border-black flex-1 text-center font-mono">{data.idNumber || '____________'}</span></div>
+                                    </div>
+                                    <div className="flex">出生日期：<span className="border-b border-black w-40 text-center">{data.birthDate || '＿＿.＿＿.＿＿'}</span></div>
+                                    <div className="flex justify-between">
+                                        <div className="flex items-center"><span className="mr-2">身　　分：</span><span className="inline-block border w-4 h-4 bg-black mr-1"></span>自然人股東</div>
+                                        <div className="flex items-center"><span className="mr-2">國　　籍：</span><span className="border-b border-black px-4">{data.nationality || '臺灣'}</span></div>
+                                    </div>
+                                    <div className="flex">戶籍地址／登記地址：<span className="border-b border-black flex-1">{data.address || '______________________________'}</span></div>
+                                    <div className="flex">連絡電話：<span className="border-b border-black flex-1">{data.phone || '________________'}</span></div>
+                                    <div className="flex">出資金額：新台幣 <span className="border-b border-black px-4">{formatMoney(data.totalCost || 0).replace('NT$', '')}</span> 元</div>
+                                    <div className="flex items-center flex-wrap">
+                                        <span className="mr-2">出資金額來源：</span>
+                                        {['薪資','營利','借款','受贈','繼承'].map(src => (
+                                            <span key={src} className="mr-4 cursor-pointer select-none" onClick={() => onToggleFundSource && onToggleFundSource(src)}>
+                                                <span className={`inline-block border border-black w-4 h-4 mr-1 align-middle ${fundSources?.[src] ? 'bg-black' : ''}`}></span>{src}
+                                            </span>
+                                        ))}
+                                        <span className="cursor-pointer select-none" onClick={() => onToggleFundSource && onToggleFundSource('其他')}>
+                                            <span className={`inline-block border border-black w-4 h-4 mr-1 align-middle ${fundSources?.['其他'] ? 'bg-black' : ''}`}></span>其他：___________
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="mb-8">
+                                    <div className="font-bold underline mb-2">應提供資料：</div>
+                                    <div className="pl-4 font-bold flex items-center">
+                                        自然人股東：<span className="inline-block border w-4 h-4 bg-black mr-2"></span>身分證／健保卡／居留證／護照（擇一）正反面影本
+                                    </div>
+                                </div>
+
+                                <div className="space-y-6">
+                                    <div className="font-bold">聲明段：</div>
+                                    <div className="pl-8 leading-loose text-justify">
+                                        本人聲明上述事項及所檢附文件均完全確實，且絕無洗錢防制法第二條所列情事，如有虛偽或隱匿，願受法律制裁，並願賠償 貴事務所因而遭受之損失。
+                                    </div>
+                                </div>
+
+                                <div className="mt-16 space-y-2">
+                                    <div className="text-lg">此致</div>
+                                    <div className="text-xl font-bold tracking-widest pl-4">創嶼會計師事務所</div>
+                                </div>
+
+                                <div className="mt-12 text-right px-8">
+                                    <div className="inline-block text-left min-w-[300px] space-y-4 font-bold text-xl">
+                                        <div className="flex items-baseline">
+                                            <span className="mr-4">聲明人：</span>
+                                            <span className="border-b border-black flex-1 text-center font-kai relative">
+                                                {data.shareholderName}
+                                                {signatureImg && <img src={signatureImg} className="absolute -top-6 left-1/2 transform -translate-x-1/2 h-20 mix-blend-multiply" alt="Signed" />}
+                                            </span>
+                                        </div>
+                                        <div className="flex items-baseline">
+                                            <span className="mr-4">日　期：</span>
+                                            <span>民國 {rocYear} 年 {rocMonth} 月 {rocDay} 日</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-12 pt-8 border-t border-slate-300 text-xs text-slate-500 leading-relaxed">
+                                    <div className="font-bold mb-1">洗錢防制法第二條：</div>
+                                    <div>本法所稱洗錢，指下列行為：</div>
+                                    <div>一、意圖掩飾或隱匿特定犯罪所得來源，或使他人逃避刑事追訴，而移轉或變更特定犯罪所得。</div>
+                                    <div>二、掩飾或隱匿特定犯罪所得之本質、來源、去向、所在、所有權、處分權或其他權益者。</div>
+                                    <div>三、收受、持有或使用他人之特定犯罪所得。</div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* --- 5. 洗錢防制 (AML) - Legal --- */}
+                        {docId === 'doc_aml_leg' && (
+                            <div className="font-serif text-base leading-relaxed text-justify px-12 py-8 relative">
+                                <h2 className="text-2xl font-bold text-center mb-4 tracking-widest">洗錢防制聲明書－公司增資</h2>
+                                <p className="text-center text-sm mb-8">本聲明書係基於洗錢防制法所做之聲明，不得用於洗錢防制風險評估、查核以外之用途。</p>
+
+                                <div className="space-y-4 font-bold text-lg mb-8">
+                                    <div className="flex justify-between">
+                                        <div className="flex-1 flex">法人名稱：<span className="border-b border-black flex-1 text-center">{data.shareholderName}</span></div>
+                                        <div className="w-8"></div>
+                                        <div className="flex-1 flex">統一編號：<span className="border-b border-black flex-1 text-center font-mono">{data.idNumber || '____________'}</span></div>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <div className="flex items-center"><span className="mr-2">身　　分：</span><span className="inline-block border w-4 h-4 bg-black mr-1"></span>法人股東</div>
+                                        <div className="flex items-center"><span className="mr-2">國　　籍：</span><span className="border-b border-black px-4">{data.nationality || '臺灣'}</span></div>
+                                    </div>
+                                    <div className="flex">戶籍地址／登記地址：<span className="border-b border-black flex-1">{data.address || '______________________________'}</span></div>
+                                    <div className="flex">連絡電話：<span className="border-b border-black flex-1">{data.phone || '________________'}</span></div>
+                                    <div className="flex">出資金額：新台幣 <span className="border-b border-black px-4">{formatMoney(data.totalCost || 0).replace('NT$', '')}</span> 元</div>
+                                    <div className="flex items-center flex-wrap">
+                                        <span className="mr-2">出資金額來源：</span>
+                                        {['資本','薪資','營利','借款','受贈','繼承'].map(src => (
+                                            <span key={src} className="mr-4 cursor-pointer select-none" onClick={() => onToggleFundSource && onToggleFundSource(src)}>
+                                                <span className={`inline-block border border-black w-4 h-4 mr-1 align-middle ${fundSources?.[src] ? 'bg-black' : ''}`}></span>{src}
+                                            </span>
+                                        ))}
+                                        <span className="cursor-pointer select-none" onClick={() => onToggleFundSource && onToggleFundSource('其他')}>
+                                            <span className={`inline-block border border-black w-4 h-4 mr-1 align-middle ${fundSources?.['其他'] ? 'bg-black' : ''}`}></span>其他：___________
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="mb-8">
+                                    <div className="font-bold underline mb-2">應提供資料：</div>
+                                    <div className="pl-4 font-bold flex items-center mb-2">
+                                        法人股東：<span className="inline-block border w-4 h-4 bg-black mr-2"></span>公司設立登記核准文件 <span className="inline-block border w-4 h-4 bg-black ml-4 mr-2"></span>所有權人或實質受益人聲明書
+                                    </div>
+                                </div>
+
+                                <div className="space-y-6">
+                                    <div className="font-bold">聲明段：</div>
+                                    <div className="pl-8 leading-loose text-justify">
+                                        本人聲明上述事項及所檢附文件均完全確實，且絕無洗錢防制法第二條所列情事，如有虛偽或隱匿，願受法律制裁，並願賠償 貴事務所因而遭受之損失。
+                                    </div>
+                                </div>
+
+                                <div className="mt-16 space-y-2">
+                                    <div className="text-lg">此致</div>
+                                    <div className="text-xl font-bold tracking-widest pl-4">創嶼會計師事務所</div>
+                                </div>
+
+                                <div className="mt-8 text-right px-8">
+                                    <div className="inline-block text-left min-w-[320px] space-y-4 font-bold text-lg">
+                                        <div className="flex items-end mb-4">
+                                            <span className="mr-2 pb-1">聲明人：</span>
+                                            <span className="border-b border-black flex-1 text-center font-kai text-xl pb-1">{data.shareholderName}</span>
+                                            {/* 大小章格子 - 下緣切齊公司名稱底線 */}
+                                            <div className="flex items-end gap-2 ml-4">
+                                                <div className="w-20 h-20 border-2 border-red-400 rounded flex items-center justify-center text-red-400 text-xs">公司大章</div>
+                                                <div className="w-14 h-14 border-2 border-red-400 rounded flex items-center justify-center text-red-400 text-xs">負責人章</div>
+                                            </div>
+                                        </div>
+                                        <div className="text-center text-sm mb-4">(若為法人股東，應由其負責人立此聲明書)</div>
+
+                                        <div className="flex items-baseline mb-2">
+                                            <div className="w-24 text-right mr-2">代表人簽署：</div>
+                                            <div className="border-b border-black flex-1 text-center">{data.representative || '____________'}</div>
+                                        </div>
+                                        <div className="flex items-baseline mb-4">
+                                            <div className="w-24 text-right mr-2">代表人職稱：</div>
+                                            <div className="border-b border-black flex-1 text-center font-kai">負責人</div>
+                                        </div>
+                                        <div className="flex items-baseline mb-8">
+                                            <div className="w-24 text-right mr-2">代理人及關係：</div>
+                                            <div className="border-b border-black flex-1"></div>
+                                        </div>
+
+                                        <div className="flex items-baseline justify-end">
+                                            <span className="mr-4">日　期：</span>
+                                            <span>民國　114　年　　　月　　　日</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="mt-8 pt-4 border-t border-slate-300 text-xs text-slate-500 leading-relaxed">
+                                    <div className="font-bold mb-1">洗錢防制法第二條：</div>
+                                    <div>本法所稱洗錢，指下列行為：</div>
+                                    <div>一、意圖掩飾或隱匿特定犯罪所得來源，或使他人逃避刑事追訴，而移轉或變更特定犯罪所得。</div>
+                                    <div>二、掩飾或隱匿特定犯罪所得之本質、來源、去向、所在、所有權、處分權或其他權益者。</div>
+                                    <div>三、收受、持有或使用他人之特定犯罪所得。</div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* --- 6. 實質受益人 (Beneficial Owner) --- */}
+                        {docId === 'doc_beneficial' && (
+                            <div className="font-serif text-base leading-relaxed text-justify px-12 py-8 relative">
+                                <h2 className="text-3xl font-bold text-center mb-2 tracking-widest">所有權人或實質受益人聲明書</h2>
+                                <h3 className="text-xl font-bold text-center mb-8 text-slate-600 italic">(客戶為法人者適用)</h3>
+
+                                <div className="space-y-8">
+                                    <div>
+                                        <h4 className="font-bold text-xl mb-4">一、所有權人或實質受益人茲此聲明：</h4>
+                                        <ol className="list-chinese pl-4 space-y-4 leading-loose">
+                                            <li>本法人委任　貴所為<span className="border-b border-black px-2">資本額簽證</span>之準備或進行交易一案，本法人業已自行查驗依註冊所在地之相關所有權與控制權結構，清楚瞭解所有業務性質，並無「洗錢防制法」第 3 條所稱特定犯罪之情，亦無第 4 條之特定犯罪所得；並業已自行查驗最終直接或間接持有本法人股份或資本超過百分之二十五之自然人屬實質受益人部分，皆已向　貴所揭露。</li>
+                                            <li>本法人對註冊地國人民、法人、團體或其他機構直接或間接持有本法人股份或出資比率之計算及其直接或間接對本法人是否為實質受益人之判斷，確實依照相關認定標準為判斷。</li>
+                                            <li>本法人承諾，於本交易準備或進行中及終止時　貴所得為必要查驗時，本法人願意配合提供背後董事及股東名冊 (至最終實質受益人) 及海外控股架構圖等資料，並同意依　貴所要求，經查驗有違反洗錢防制法相關規定之虞時，願由　貴所將相關資訊提供給法務部調查局申報。本聲明就防制洗錢查驗情形暨所附資料為正確無誤，如有不實，本法人願負一切中華民國之法律責任。</li>
+                                        </ol>
+                                    </div>
+
+                                    <div>
+                                        <h4 className="font-bold text-xl mb-4">二、代理人茲此聲明：</h4>
+                                        <ol className="list-chinese pl-4 space-y-4 leading-loose">
+                                            <li>本代理人對上述所有權人或實質受益人確實明瞭現行法規對防制洗錢相關規定之定義及股權計算、控制力查驗方式及相關罰則規定。並了解「洗錢防制法」第 14 條至第 16 條對代理人相關制裁之規定。</li>
+                                            <li>本交易案準備或進行中及終止時五年內，　貴所有需配合法務部調查局查驗時，本代理人有義務督請所有權人及實質受益人提供背後董事及股東名冊 (至最終受益人) 及海外控股架構圖等資料。</li>
+                                        </ol>
+                                    </div>
+                                </div>
+
+                                <div className="mt-16 space-y-2">
+                                    <div className="text-lg">此致</div>
+                                    <div className="text-xl font-bold tracking-widest pl-4">創嶼會計師事務所</div>
+                                </div>
+
+                                <div className="mt-8 px-8">
+                                    <div className="grid grid-cols-[120px_1fr] gap-4 mb-8">
+                                        <div className="text-right font-bold pt-2">本法人名稱：</div>
+                                        <div className="flex items-start gap-4">
+                                            <div className="flex-1">
+                                                <div className="border-b border-black w-full pb-1 font-bold text-xl mb-1">{data.shareholderName}</div>
+                                                <div className="text-xs text-slate-500">(請書寫國籍及法人名稱)</div>
+                                            </div>
+                                            {/* 大小章格子 */}
+                                            <div className="flex items-end gap-2">
+                                                <div className="w-20 h-20 border-2 border-red-400 rounded flex items-center justify-center text-red-400 text-xs">公司大章</div>
+                                                <div className="w-14 h-14 border-2 border-red-400 rounded flex items-center justify-center text-red-400 text-xs">負責人章</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-[120px_1fr] gap-4 mb-4 items-center">
+                                        <div className="text-right font-bold">代表人簽署：</div>
+                                        <div className="border-b border-black w-full text-center font-bold">{data.representative || '____________'}</div>
+                                    </div>
+
+                                    <div className="grid grid-cols-[120px_1fr] gap-4 mb-8 items-center">
+                                        <div className="text-right font-bold">代表人職稱：</div>
+                                        <div className="border-b border-black w-full text-center font-kai">負責人</div>
+                                        <div className="text-xs text-slate-500 col-start-2">(必填)</div>
+                                    </div>
+
+                                    <div className="grid grid-cols-[120px_1fr] gap-4 mb-12 items-center">
+                                        <div className="text-right font-bold">代理人及關係：</div>
+                                        <div className="border-b border-black w-full text-center"></div>
+                                        <div className="text-xs text-slate-500 col-start-2">(簽名或蓋章)</div>
+                                    </div>
+
+                                    <div className="text-right text-lg font-bold">
+                                        日期： 114 年　　　月　　　日
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Signature Block - Hide for Offset Doc and all new Templates as they have custom footers */}
+                        {docId !== 'doc_offset' && docId !== 'doc_invest' && docId !== 'doc_client' && docId !== 'doc_aml_nat' && docId !== 'doc_aml_leg' && docId !== 'doc_beneficial' && (
+                            <div className="mt-12 pt-8">
+                                <div className="flex justify-between items-end">
+                                    <div className="w-1/2">
+                                        <p className="mb-2 font-bold">簽章：</p>
+                                        <div className="h-24 border-b border-slate-400 relative">
+                                            {/* Show signature image if provided (Digital) OR if it's paper mode we just leave blank for printing */}
+                                            {signatureImg && isDigitalSignSupported ?
+                                                <img src={signatureImg} className="h-full absolute bottom-0 left-0" alt="簽名" /> :
+                                                <span className="text-slate-300 text-sm absolute bottom-2 no-print">
+                                                    {isDigitalSignSupported ? '(尚未簽名)' : '(請列印後紙本簽名)'}
+                                                </span>
+                                            }
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <p>中華民國 &nbsp;{date.getFullYear() - 1911}&nbsp; 年 &nbsp;{date.getMonth() + 1}&nbsp; 月 &nbsp;{date.getDate()}&nbsp; 日</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                        )}
                     </div>
-                </div>
+                </div >
             );
         }
 
+
+
         function App() {
+            // ★★★ 開發模式：?dev=1 自然人 | ?dev=2 法人 ★★★
+            const devParam = new URLSearchParams(window.location.search).get('dev');
+            const isDevMode = devParam === '1' || devParam === '2';
+            const devType = devParam === '2' ? 'legal' : 'natural';
+
             // App Config State
             const [config, setConfig] = useState(DEFAULT_CONFIG);
+            const [isConfigLoading, setIsConfigLoading] = useState(!isDevMode);
+            const [configError, setConfigError] = useState(null);
             const [activeTab, setActiveTab] = useState('identity'); // identity, net_value, calculation, capital_docs, meeting_docs
-            const [isAdminOpen, setIsAdminOpen] = useState(false);
+
+            // ★★★ 動態載入設定 ★★★
+            useEffect(() => {
+                if (isDevMode) {
+                    // 開發模式：使用本地 DEFAULT_CONFIG + 模擬資料
+                    console.log('%c[DEV MODE] 使用本地設定，不打 API', 'color: orange; font-weight: bold;');
+                    setConfig(prev => ({
+                        ...prev,
+                        tabConfig: { identity: 'active', net_value: 'active', capital_increase: 'active', meeting_docs: 'active' },
+                        checkinEnabled: 'active',
+                        voteEnabled: 'active',
+                        checkinStartTime: '',
+                        checkinDeadline: '',
+                        voteStartTime: '',
+                        voteDeadline: '',
+                        proposals: [
+                            { id: 'proposal_1', title: '承認事項1：114年度營業報告書及財務報表案', options: ['贊成', '反對', '棄權'] },
+                            { id: 'proposal_2', title: '承認事項2：114年度盈餘分配案', options: ['贊成', '反對', '棄權'] }
+                        ],
+                        meetingDocs: [
+                            { id: 'meeting_doc_1', title: '114年度財務報表', desc: '含資產負債表、損益表及現金流量表', driveFileId: '1a6nzaiJveo_9JomIP69XEq1tOS50jUls' },
+                            { id: 'meeting_doc_2', title: '115年股東常會議事手冊', desc: '含會議議程、各項議案說明', driveFileId: '1-VBXhuDOmF7CqClG3kCjTsXWonT7R00n' }
+                        ],
+                        shareholderOptions: [
+                            { id: '01', label: '01 蔡*', type: 'natural' },
+                            { id: '02', label: '02 郁*******', type: 'legal' }
+                        ]
+                    }));
+                    return;
+                }
+                const loadConfig = async () => {
+                    try {
+                        const response = await fetch(DEFAULT_CONFIG.n8nApiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ type: 'get_config' })
+                        });
+                        const data = await response.json();
+                        if (data.success && data.config) {
+                            setConfig(prev => ({
+                                ...prev,
+                                ...data.config,
+                                // 保留本地設定不被覆蓋
+                                n8nApiUrl: prev.n8nApiUrl,
+                                shareTypes: prev.shareTypes,
+                                tax: prev.tax,
+                                documents: prev.documents
+                            }));
+                        } else {
+                            setConfigError('無法載入設定');
+                        }
+                    } catch (e) {
+                        console.error('Config load error:', e);
+                        setConfigError('連線失敗: ' + e.message);
+                    } finally {
+                        setIsConfigLoading(false);
+                    }
+                };
+                loadConfig();
+            }, []);
+
+            // ★★★ 輔助：判斷功能是否已截止 / 尚未開放 ★★★
+            const isExpired = (deadline) => {
+                if (!deadline) return false;
+                return new Date() > new Date(deadline);
+            };
+            const isNotStarted = (startTime) => {
+                if (!startTime) return false;
+                return new Date() < new Date(startTime);
+            };
+
+            // ★★★ 取得 tab 狀態 ★★★
+            const getTabStatus = (tabId) => {
+                return config.tabConfig ? (config.tabConfig[tabId] || 'active') : 'active';
+            };
 
             // --- 核心資料 for 股東 ---
-            const [name, setName] = useState('');
-            const [shareholderId, setShareholderId] = useState('');
+            const [name, setName] = useState(isDevMode ? (devType === 'legal' ? '測試法人公司' : '測試股東') : '');
+            const [shareholderId, setShareholderId] = useState(isDevMode ? (devType === 'legal' ? '02' : '01') : '');
+            const [shareholderInfo, setShareholderInfo] = useState({
+                idNumber: '', birthDate: '', nationality: '', address: '', phone: '', representative: ''
+            });
 
             // 驗證相關
             const [inputVerifyCode, setInputVerifyCode] = useState('');
-            const [isVerified, setIsVerified] = useState(false);
+            const [isVerified, setIsVerified] = useState(isDevMode);
             const [isVerifying, setIsVerifying] = useState(false);
 
             // 股份狀態
             const [sharesMap, setSharesMap] = useState(() => {
+                if (isDevMode) return { voting_shares: '100', preferred_yi: '50' };
                 const initial = {};
                 config.shareTypes.forEach(t => initial[t.id] = '');
                 return initial;
             });
 
             // 試算相關 State
-            const [type, setType] = useState('natural');
+            const [type, setType] = useState(isDevMode ? devType : 'natural');
             const [willingToOffset, setWillingToOffset] = useState(false);
             const [offsetShares, setOffsetShares] = useState('');
             const [additionalShares, setAdditionalShares] = useState('');
             const [isTimelineExpanded, setIsTimelineExpanded] = useState(false);
 
+            // 出資來源勾選
+            const [fundSources, setFundSources] = useState({});
+            const toggleFundSource = (key) => setFundSources(prev => ({ ...prev, [key]: !prev[key] }));
+
+            // 產生文件結果
+            const [docGenResults, setDocGenResults] = useState({}); // { doc_invest: { success, key, message }, ... }
+
             // 文件區狀態
             const [selectedDocId, setSelectedDocId] = useState('doc1'); // 對於 CapitalDocs 預設
+            const [expandedDocId, setExpandedDocId] = useState(null);
             const [signMethod, setSignMethod] = useState('online');
             const [signatureImg, setSignatureImg] = useState(null);
             const [isProcessing, setIsProcessing] = useState(false);
             const [isCapturing, setIsCapturing] = useState(false);
 
+            // Tab 4: 股東會功能狀態
+            const [checkinStatus, setCheckinStatus] = useState(null); // null | 'online' | 'physical'
+            const [votes, setVotes] = useState({}); // { proposal_id: 'agree'|'oppose'|'abstain' }
+            const [isVoteSubmitted, setIsVoteSubmitted] = useState(false);
+            const [isSubscriptionConfirmed, setIsSubscriptionConfirmed] = useState(false);
+            const [viewingDoc, setViewingDoc] = useState(null); // null | doc id
 
             // --- Handlers ---
             const handleNumChange = (setter) => (e) => {
@@ -544,6 +1076,14 @@
                         if (data.success) {
                             setIsVerified(true);
                             setName(data.name);
+                            setShareholderInfo({
+                                idNumber: data.idNumber || '',
+                                birthDate: data.birthDate || '',
+                                nationality: data.nationality || '',
+                                address: data.address || '',
+                                phone: data.phone || '',
+                                representative: data.representative || ''
+                            });
                             if (data.shares) {
                                 if (typeof data.shares === 'object') {
                                     setSharesMap(prev => ({ ...prev, ...data.shares }));
@@ -552,7 +1092,21 @@
                                     setSharesMap(prev => ({ ...prev, [firstType]: data.shares }));
                                 }
                             }
+                            // ★★★ Feature: Auto-Load Saved Subscription Data ★★★
+                            if (data.saved_subscription) {
+                                setWillingToOffset(true);
+                                setAdditionalShares(data.saved_subscription.toString());
+                            }
+
                             alert(`驗證成功！歡迎 ${data.name} 股東。`);
+
+                            // ★★★ Fix: Ensure type is set correctly based on local config or backend response ★★★
+                            const localTarget = config.shareholderOptions.find(o => o.id === shareholderId);
+                            if (data.type) {
+                                setType(data.type);
+                            } else if (localTarget) {
+                                setType(localTarget.type || 'natural');
+                            }
                         } else {
                             alert("驗證失敗：驗證碼錯誤或系統無此資料。");
                             setInputVerifyCode('');
@@ -565,7 +1119,11 @@
                     await new Promise(r => setTimeout(r, 1000));
                     if (inputVerifyCode === '1196' || inputVerifyCode === '8888') {
                         setIsVerified(true);
-                        setName("蔡昀達 (測試)");
+                        // 嘗試從 shareTypes 中尋找設定，若無則預設
+                        const target = config.shareholderOptions.find(o => o.id === shareholderId);
+                        setName(target ? target.label.split(' ')[1] : "測試股東");
+                        setType(target?.type || 'natural');
+
                         setSharesMap({ voting_shares: "2", preferred_yi: "0" });
                         alert("【測試模式】驗證成功！");
                     } else {
@@ -592,27 +1150,112 @@
                 let maxOffsetSharesPossible = 0;
                 if (config.subscriptionPrice > 0) maxOffsetSharesPossible = Math.floor(totalNetDividend / config.subscriptionPrice);
 
-                let finalOffsetShares = 0;
-                let finalOffsetCost = 0;
-                if (willingToOffset) {
-                    let input = Number(offsetShares) || 0;
-                    if (input > maxOffsetSharesPossible) input = maxOffsetSharesPossible;
-                    finalOffsetShares = input;
-                    finalOffsetCost = finalOffsetShares * config.subscriptionPrice;
-                }
-
                 let extraShares = Number(additionalShares) || 0;
                 let extraCost = extraShares * config.subscriptionPrice;
 
+                let finalOffsetShares = 0;
+                let finalOffsetCost = 0;
+
+                // Auto-calculate offset if willing (Offset = Min(Dividend, Cost))
+                // Note: The concept of "Offset Shares" is tricky if price > 1. 
+                // Usually "Offset Amount" is the key. 
+                // But if we strictly need "Offset Shares" (shares paid by dividend), it's floor(dividend / price).
+                // However, here the requirement seems to be "Use dividend to pay for subscribed shares".
+
+                if (willingToOffset) {
+                    // The cost to be offset is the cost of the NEW shares (extraShares)
+                    // Logic: How much of the dividend can be used?
+                    // Max usable = totalNetDividend
+                    // Needed = extraCost
+                    finalOffsetCost = Math.min(totalNetDividend, extraCost);
+
+                    // Reverse calculate shares if needed (though only cost matters for the doc)
+                    // distinct from "Offset Shares" meaning "Shares bought purely by dividend"
+                    // Here we just care about the amount.
+                }
+
+                const totalGrossDividend = dividendResults.reduce((sum, item) => sum + item.gross, 0);
+
                 return {
-                    totalShares, dividendResults, totalNetDividend, maxOffsetSharesPossible,
+                    totalShares, dividendResults, totalNetDividend, totalGrossDividend, maxOffsetSharesPossible,
                     finalOffsetShares, finalOffsetCost, extraShares, extraCost,
-                    totalNewShares: finalOffsetShares + extraShares,
-                    totalCost: finalOffsetCost + extraCost,
+                    totalNewShares: extraShares, // All shares are now "extra/additional" since we removed the separate offset input
+                    totalCost: extraCost,        // Total cost is just the cost of those shares
                     remainingDividendCash: totalNetDividend - finalOffsetCost,
-                    finalBalance: (totalNetDividend - finalOffsetCost) - extraCost
+                    finalBalance: (totalNetDividend - finalOffsetCost) - (extraCost - finalOffsetCost) // Simply: totalNetDividend - extraCost
                 };
             }, [sharesMap, config.dividends, config.subscriptionPrice, config.tax, type, willingToOffset, offsetShares, additionalShares]);
+
+            // Mobile Detection Hook (Simplified)
+            const useIsMobile = () => {
+                const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+                useEffect(() => {
+                    const handleResize = () => setIsMobile(window.innerWidth < 768);
+                    window.addEventListener('resize', handleResize);
+                    return () => window.removeEventListener('resize', handleResize);
+                }, []);
+                return isMobile;
+            };
+
+            const isMobile = useIsMobile();
+
+            // ★★★ 呼叫後端 generate_doc API（Gotenberg → R2）★★★
+            const handleGenerateDoc = async (docId, options = {}) => {
+                if (!shareholderId || !config.n8nApiUrl) {
+                    alert("請先選擇股東身分！");
+                    return null;
+                }
+                setIsProcessing(true);
+                try {
+                    const totalHI = result?.dividendResults?.reduce((sum, d) => sum + d.hi, 0) || 0;
+                    const body = {
+                        type: 'generate_doc',
+                        docId,
+                        shareholderId,
+                        shareholderName: name,
+                        idNumber: shareholderInfo.idNumber,
+                        representative: shareholderInfo.representative,
+                        birthDate: shareholderInfo.birthDate,
+                        nationality: shareholderInfo.nationality,
+                        address: shareholderInfo.address,
+                        phone: shareholderInfo.phone,
+                        totalGrossDividend: result?.totalGrossDividend || 0,
+                        healthInsuranceDeduction: totalHI,
+                        extraCost: result?.extraCost || 0,
+                        totalNewShares: result?.totalNewShares || 0,
+                        totalCost: result?.totalCost || 0,
+                        subscriptionPrice: config.subscriptionPrice || 160000,
+                        fundSources: fundSources,
+                        // 簽名圖（簽核版才帶）
+                        ...(options.signatureImage ? { signatureImage: options.signatureImage } : {}),
+                        // 標記是否為簽核版
+                        ...(options.isSigned ? { isSigned: true } : {})
+                    };
+
+                    const res = await fetch(config.n8nApiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                    const data = await res.json();
+
+                    // 記錄結果
+                    setDocGenResults(prev => ({ ...prev, [docId]: data }));
+
+                    if (data.success) {
+                        return data;
+                    } else {
+                        alert('文件產生失敗：' + (data.error || data.message || '未知錯誤'));
+                        return null;
+                    }
+                } catch (e) {
+                    console.error('generate_doc error:', e);
+                    alert('文件產生失敗：' + e.message);
+                    return null;
+                } finally {
+                    setIsProcessing(false);
+                }
+            };
 
             // PDF/Image Handlers
             const handleGeneratePDF = async (action, targetDocId) => {
@@ -626,12 +1269,58 @@
                 if (!input) { alert("找不到文件元素"); setIsProcessing(false); return; }
 
                 try {
-                    const canvas = await html2canvas(input, { scale: 2, useCORS: true });
+                    // ★★★ Robust Fix for Mobile PDF Layout ★★★
+                    // 1. Create a deep clone of the element
+                    const clone = input.cloneNode(true);
+
+                    // 2. Style the clone to force Desktop width (800px standard)
+                    clone.style.width = '800px';
+                    clone.style.minWidth = '800px';
+                    clone.style.maxWidth = '800px';
+                    clone.style.height = 'auto';
+                    clone.style.position = 'absolute';
+                    clone.style.top = '-10000px'; // Move off-screen
+                    clone.style.left = '-10000px';
+                    clone.style.zIndex = '-1';
+                    clone.style.background = '#ffffff'; // Ensure white background
+
+                    // Append to body so it renders
+                    document.body.appendChild(clone);
+
+                    // Small delay to ensure render (sometimes needed for fonts/images)
+                    await new Promise(r => setTimeout(r, 100));
+
+                    // 3. Capture the CLONE instead of the original
+                    const canvas = await html2canvas(clone, {
+                        scale: 3, // A3 fix: Higher scale for better quality
+                        useCORS: true,
+                        logging: false,
+                        backgroundColor: '#ffffff'
+                    });
+
+                    // 4. Remove clone
+                    document.body.removeChild(clone);
+
+                    // 5. Generate PDF with pagination (A2 fix)
                     const imgData = canvas.toDataURL('image/png');
                     const pdf = new jsPDF('p', 'mm', 'a4');
                     const pdfWidth = pdf.internal.pageSize.getWidth();
-                    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-                    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+                    const pageHeight = pdf.internal.pageSize.getHeight();
+                    const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+                    let heightLeft = imgHeight;
+                    let position = 0;
+
+                    // First page
+                    pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+                    heightLeft -= pageHeight;
+
+                    // Additional pages if content exceeds one page
+                    while (heightLeft > 0) {
+                        position = heightLeft - imgHeight;
+                        pdf.addPage();
+                        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+                        heightLeft -= pageHeight;
+                    }
 
                     const docTitle = config.documents.find(d => d.id === targetDocId)?.title || targetDocId;
                     const filename = `${shareholderId}_${name}_${docTitle}.pdf`;
@@ -639,6 +1328,26 @@
                     if (action === 'download') {
                         pdf.save(filename);
                         alert("文件已下載。");
+                    } else if (action === 'share') {
+                        // D3 fix: Implement share action
+                        const pdfBlob = pdf.output('blob');
+                        const file = new File([pdfBlob], filename, { type: 'application/pdf' });
+                        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                            try {
+                                await navigator.share({
+                                    files: [file],
+                                    title: docTitle,
+                                    text: `${name} 的 ${docTitle}`
+                                });
+                            } catch (err) {
+                                console.error('Share failed:', err);
+                                // Fallback to download
+                                pdf.save(filename);
+                            }
+                        } else {
+                            alert('您的裝置不支援分享 PDF，將改為下載。');
+                            pdf.save(filename);
+                        }
                     } else if (action === 'submit') {
                         if (config.n8nApiUrl) {
                             const pdfBlob = pdf.output('blob');
@@ -689,6 +1398,174 @@
                 e.target.value = '';
             };
 
+            // ★★★ Feature: Auto-Save Subscription Data ★★★
+            const handleSaveSubscription = async () => {
+                if (!shareholderId || !result || !config.n8nApiUrl) return;
+                setIsProcessing(true);
+                try {
+                    const totalHI = result.dividendResults.reduce((sum, d) => sum + d.hi, 0);
+                    const res = await fetch(config.n8nApiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 'save_data',
+                            shareholderId: shareholderId,
+                            totalShares: result.totalShares,
+                            totalGrossDividend: result.totalGrossDividend,
+                            healthInsuranceDeduction: totalHI,
+                            willParticipate: willingToOffset,
+                            subscriptionShares: willingToOffset ? (Number(additionalShares) || 0) : 0,
+                            subscriptionCost: willingToOffset ? result.extraCost : 0,
+                            finalBalance: willingToOffset ? result.finalBalance : result.totalNetDividend
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        setIsSubscriptionConfirmed(true);
+                        if (willingToOffset) {
+                            alert('認購資料已儲存！正在生成文件上傳中...');
+                            setTimeout(() => uploadAllDocuments(), 500);
+                        } else {
+                            alert('已記錄您不參與增資，預計將領回股利淨額。');
+                        }
+                    } else {
+                        alert('儲存失敗：' + (data.error || '未知錯誤'));
+                    }
+                } catch (e) {
+                    console.error("Save failed", e);
+                    alert('儲存失敗，請稍後再試');
+                } finally {
+                    setIsProcessing(false);
+                }
+            };
+
+            // ★★★ 自動生成所有文件原檔（Gotenberg → R2）★★★
+            const uploadAllDocuments = async () => {
+                if (!result || !config.n8nApiUrl) return;
+                const applicableDocs = config.documents.filter(doc => doc.audience === 'all' || doc.audience === type);
+                let successCount = 0;
+                let failCount = 0;
+
+                for (const doc of applicableDocs) {
+                    try {
+                        const data = await handleGenerateDoc(doc.id);
+                        if (data && data.success) {
+                            successCount++;
+                            console.log(`[產生成功] ${doc.title} → ${data.key}`);
+                        } else {
+                            failCount++;
+                        }
+                    } catch (e) {
+                        console.error(`[產生失敗] ${doc.title}`, e);
+                        failCount++;
+                    }
+                }
+                alert(`文件原檔產生完成！成功 ${successCount} 份${failCount > 0 ? `，失敗 ${failCount} 份` : ''}`);
+            };
+
+            // ★★★ Tab 4: 報到 API ★★★
+            const handleCheckin = async (mode) => {
+                if (checkinStatus) return; // 已報到不可重複
+                setIsProcessing(true);
+                try {
+                    const deviceInfo = {
+                        timestamp: new Date().toISOString(),
+                        userAgent: navigator.userAgent
+                    };
+                    try {
+                        const ipRes = await fetch('https://api.ipify.org?format=json');
+                        const ipData = await ipRes.json();
+                        deviceInfo.ip = ipData.ip;
+                    } catch (e) {
+                        deviceInfo.ip = 'unknown';
+                    }
+
+                    const response = await fetch(config.n8nApiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ type: 'checkin', shareholderId, mode, deviceInfo })
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        setCheckinStatus(mode);
+                        alert(`報到成功！方式：${mode === 'online' ? '線上出席' : '實體出席'}`);
+                    } else {
+                        alert('報到失敗：' + (data.message || '請稍後再試'));
+                    }
+                } catch (e) {
+                    console.error('Checkin error:', e);
+                    alert('報到連線失敗: ' + e.message);
+                }
+                setIsProcessing(false);
+            };
+
+            // ★★★ Tab 4: 投票 API ★★★
+            const handleVoteSubmit = async () => {
+                const proposals = config.proposals || [];
+                // 檢查是否所有議案都已投票
+                const allVoted = proposals.every(p => votes[p.id]);
+                if (!allVoted) {
+                    alert('請對所有議案完成投票後再送出');
+                    return;
+                }
+                setIsProcessing(true);
+                try {
+                    const voteData = proposals.map(p => ({ id: p.id, choice: votes[p.id] }));
+                    const deviceInfo = {
+                        timestamp: new Date().toISOString(),
+                        userAgent: navigator.userAgent
+                    };
+                    // 嘗試取得 IP
+                    try {
+                        const ipRes = await fetch('https://api.ipify.org?format=json');
+                        const ipData = await ipRes.json();
+                        deviceInfo.ip = ipData.ip;
+                    } catch (e) {
+                        deviceInfo.ip = 'unknown';
+                    }
+
+                    const response = await fetch(config.n8nApiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ type: 'vote', shareholderId, votes: voteData, deviceInfo })
+                    });
+                    const data = await response.json();
+                    if (data.success) {
+                        setIsVoteSubmitted(true);
+                        alert('投票送出成功！');
+                    } else {
+                        alert('投票失敗：' + (data.message || '請稍後再試'));
+                    }
+                } catch (e) {
+                    console.error('Vote error:', e);
+                    alert('投票連線失敗: ' + e.message);
+                }
+                setIsProcessing(false);
+            };
+
+            const handleShareImage = () => {
+                const element = document.getElementById('print-section');
+                if (!element) return;
+                setIsCapturing(true);
+                html2canvas(element, { scale: 2, backgroundColor: '#ffffff' }).then(canvas => {
+                    canvas.toBlob(async (blob) => {
+                        const file = new File([blob], "confirmation.png", { type: "image/png" });
+                        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                            try {
+                                await navigator.share({
+                                    files: [file],
+                                    title: '股利增資確認書',
+                                    text: '這是我的股利增資試算結果，請查收。'
+                                });
+                            } catch (err) { console.error("Share failed", err); }
+                        } else {
+                            alert("您的裝置不支援直接分享圖片，請使用下載功能。");
+                        }
+                        setIsCapturing(false);
+                    });
+                });
+            };
+
             const handleDownloadImage = () => {
                 const element = document.getElementById('print-section');
                 if (!element) return;
@@ -696,7 +1573,7 @@
                 html2canvas(element, { scale: 2, backgroundColor: '#ffffff' }).then(canvas => {
                     const link = document.createElement('a');
                     link.href = canvas.toDataURL('image/png');
-                    link.download = `股利試算確認單_${name}.png`;
+                    link.download = `股利增資金額確認書_${name}.png`;
                     document.body.appendChild(link);
                     link.click();
                     document.body.removeChild(link);
@@ -705,24 +1582,26 @@
             };
 
             // --- TABS VISUAL ---
-            const MenuItem = ({ id, label, icon }) => (
-                <button
-                    onClick={() => setActiveTab(id)}
-                    className={`flex-1 py-4 text-center font-bold text-sm md:text-base border-b-4 transition duration-200 
-                        ${activeTab === id ? 'border-blue-600 text-blue-600 bg-white' : 'border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
-                >
-                    <div className="mb-1 text-xl"><i className={`fas ${icon}`}></i></div>
-                    {label}
-                </button>
-            );
+            const MenuItem = ({ id, label, icon }) => {
+                const status = getTabStatus(id);
+                if (status === 'hidden') return null;
+                return (
+                    <button
+                        onClick={() => setActiveTab(id)}
+                        className={`flex-1 py-4 text-center font-bold text-sm md:text-base border-b-4 transition duration-200
+                            ${activeTab === id ? 'border-blue-600 text-blue-600 bg-white' : 'border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
+                    >
+                        <div className="mb-1 text-xl"><i className={`fas ${icon}`}></i></div>
+                        {label}
+                        {status === 'construction' && <div className="text-xs text-orange-500 mt-1">建置中</div>}
+                    </button>
+                );
+            };
 
             return (
                 <div className="pb-20">
                     <header className="mb-6 flex justify-between items-center no-print pt-6 px-4">
                         <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">{config.systemName}</h1>
-                        <button onClick={() => setIsAdminOpen(true)} className="text-slate-300 hover:text-slate-500 transition">
-                            <i className="fas fa-cog text-xl"></i>
-                        </button>
                     </header>
 
                     <div className="bg-white shadow-xl rounded-xl border border-slate-200 card overflow-hidden min-h-[600px]">
@@ -731,9 +1610,8 @@
                         <div className="flex border-b border-slate-200 bg-slate-50/50 no-print overflow-x-auto">
                             <MenuItem id="identity" label="1. 身份驗證" icon="fa-id-card" />
                             <MenuItem id="net_value" label="2. 每月淨值" icon="fa-chart-line" />
-                            <MenuItem id="calculation" label="3. 試算工具" icon="fa-calculator" />
-                            <MenuItem id="capital_docs" label="4. 增資文件" icon="fa-file-signature" />
-                            <MenuItem id="meeting_docs" label="5. 股東會文件" icon="fa-folder-open" />
+                            <MenuItem id="capital_increase" label="3. 增資文件填繳" icon="fa-file-invoice-dollar" />
+                            <MenuItem id="meeting_docs" label="4. 股東會文件" icon="fa-users" />
                         </div>
 
                         {/* --- TAB CONTENT --- */}
@@ -747,10 +1625,20 @@
                                         <div className="space-y-6 bg-slate-50 p-8 rounded-xl border border-slate-200 shadow-sm">
                                             <div>
                                                 <label className="block text-sm font-bold text-slate-600 mb-2">選擇股東戶號</label>
-                                                <select className="w-full p-4 border border-slate-300 rounded-lg bg-white text-lg focus:ring-2 focus:ring-blue-500 outline-none" value={shareholderId} onChange={handleShareholderSelect}>
-                                                    <option value="">-- 請選擇 --</option>
-                                                    {config.shareholderOptions.map(opt => (<option key={opt.id} value={opt.id}>{opt.label}</option>))}
-                                                </select>
+                                                {isConfigLoading ? (
+                                                    <div className="w-full p-4 border border-slate-300 rounded-lg bg-slate-100 text-slate-500 text-lg flex items-center justify-center">
+                                                        <i className="fas fa-spinner fa-spin mr-2"></i>載入股東名單中...
+                                                    </div>
+                                                ) : configError ? (
+                                                    <div className="w-full p-4 border border-red-300 rounded-lg bg-red-50 text-red-600 text-sm">
+                                                        <i className="fas fa-exclamation-triangle mr-2"></i>{configError}
+                                                    </div>
+                                                ) : (
+                                                    <select className="w-full p-4 border border-slate-300 rounded-lg bg-white text-lg focus:ring-2 focus:ring-blue-500 outline-none" value={shareholderId} onChange={handleShareholderSelect}>
+                                                        <option value="">-- 請選擇 --</option>
+                                                        {config.shareholderOptions.filter(opt => opt.id !== '合計').map(opt => (<option key={opt.id} value={opt.id}>{opt.label}</option>))}
+                                                    </select>
+                                                )}
                                             </div>
                                             {shareholderId && (
                                                 <div className="fade-in">
@@ -767,7 +1655,12 @@
                                             <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
                                                 <i className="fas fa-check"></i>
                                             </div>
-                                            <h3 className="text-2xl font-bold text-green-800 mb-2">{name}</h3>
+                                            <h3 className="text-2xl font-bold text-green-800 mb-1">{name}</h3>
+                                            <div className="mb-4">
+                                                <span className={`inline-block px-3 py-1 text-xs font-bold rounded-full ${type === 'legal' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                                    {type === 'legal' ? '法人股東' : '自然人股東'}
+                                                </span>
+                                            </div>
                                             <p className="text-green-600 mb-6">股東戶號: {shareholderId} | 驗證成功</p>
 
                                             <div className="grid grid-cols-2 gap-4 text-left bg-white p-4 rounded-lg border border-green-100 mb-6">
@@ -779,10 +1672,10 @@
                                                 ))}
                                             </div>
 
-                                            <button onClick={() => setActiveTab('calculation')} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-lg mb-3">
-                                                前往股利試算 <i className="fas fa-arrow-right ml-2"></i>
+                                            <button onClick={() => setActiveTab('capital_increase')} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-lg mb-3">
+                                                前往增資計算機 <i className="fas fa-arrow-right ml-2"></i>
                                             </button>
-                                            <button onClick={() => { setIsVerified(false); setShareholderId(''); setName(''); }} className="text-slate-400 hover:text-slate-600 underline text-sm">
+                                            <button onClick={() => { setIsVerified(false); setShareholderId(''); setName(''); setCheckinStatus(null); setVotes({}); setIsVoteSubmitted(false); setViewingDoc(null); }} className="text-slate-400 hover:text-slate-600 underline text-sm">
                                                 登出 / 重新驗證
                                             </button>
                                         </div>
@@ -795,59 +1688,72 @@
                         {activeTab === 'net_value' && (
                             <div className="p-8 fade-in">
                                 <h2 className="text-2xl font-bold mb-6 text-slate-700 border-l-4 border-blue-600 pl-4">公司每月淨值公告</h2>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left border-collapse">
-                                        <thead>
-                                            <tr className="bg-slate-100 text-slate-600">
-                                                <th className="p-4 border-b">月份</th>
-                                                <th className="p-4 border-b">每股淨值 (NAV)</th>
-                                                <th className="p-4 border-b">月增減</th>
-                                                <th className="p-4 border-b">備註</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {/* 假資料，未來可改為動態 */}
-                                            <tr className="hover:bg-slate-50"><td className="p-4 border-b">2026/01</td><td className="p-4 border-b font-mono font-bold text-blue-600">12.45</td><td className="p-4 border-b text-red-500">+1.2%</td><td className="p-4 border-b text-sm text-slate-500">-</td></tr>
-                                            <tr className="hover:bg-slate-50"><td className="p-4 border-b">2025/12</td><td className="p-4 border-b font-mono font-bold text-slate-700">12.30</td><td className="p-4 border-b text-green-500">-0.5%</td><td className="p-4 border-b text-sm text-slate-500">年度結算</td></tr>
-                                            <tr className="hover:bg-slate-50"><td className="p-4 border-b">2025/11</td><td className="p-4 border-b font-mono font-bold text-slate-700">12.36</td><td className="p-4 border-b text-red-500">+0.8%</td><td className="p-4 border-b text-sm text-slate-500">-</td></tr>
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <p className="text-center text-slate-400 text-sm mt-8">資料更新時間: 2026/02/01</p>
+                                {getTabStatus('net_value') === 'construction' ? (
+                                    <div className="flex flex-col items-center justify-center py-20">
+                                        <div className="w-20 h-20 bg-orange-100 text-orange-400 rounded-full flex items-center justify-center mb-6 text-3xl"><i className="fas fa-hard-hat"></i></div>
+                                        <h3 className="text-xl font-bold text-slate-600 mb-2">功能建置中</h3>
+                                        <p className="text-slate-500">此功能尚在準備中，敬請期待。</p>
+                                    </div>
+                                ) : !isVerified ? (
+                                    <div className="flex flex-col items-center justify-center py-20">
+                                        <div className="w-20 h-20 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mb-6 text-3xl"><i className="fas fa-lock"></i></div>
+                                        <h3 className="text-xl font-bold text-slate-600 mb-2">需要身份驗證</h3>
+                                        <p className="text-slate-500 mb-6">請先至頁籤1完成身份驗證後，即可查看每月淨值資訊。</p>
+                                        <button onClick={() => setActiveTab('identity')} className="bg-blue-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-blue-700 transition shadow-md"><i className="fas fa-arrow-left mr-2"></i>前往身份驗證</button>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-left border-collapse">
+                                                <thead>
+                                                    <tr className="bg-slate-100 text-slate-600">
+                                                        <th className="p-4 border-b">期間</th>
+                                                        <th className="p-4 border-b">每股淨值</th>
+                                                        <th className="p-4 border-b">月漲跌</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {config.netValueHistory.map((row, idx) => {
+                                                        const prev = config.netValueHistory[idx + 1];
+                                                        const monthlyChange = prev && prev.nav ? ((row.nav - prev.nav) / prev.nav * 100).toFixed(1) + '%' : '-';
+                                                        const monthlyColor = monthlyChange.startsWith('-') ? 'text-green-600' : (monthlyChange === '-' ? 'text-slate-400' : 'text-red-600');
+                                                        return (
+                                                            <tr key={idx} className="hover:bg-slate-50">
+                                                                <td className="p-4 border-b">{row.month}</td>
+                                                                <td className="p-4 border-b font-mono font-bold text-slate-700">{typeof row.nav === 'number' ? row.nav.toLocaleString() : row.nav}</td>
+                                                                <td className={`p-4 border-b font-bold ${monthlyColor}`}>{monthlyChange}</td>
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <p className="text-center text-slate-400 text-sm mt-8">資料更新時間: {new Date().toISOString().slice(0, 10)}</p>
+                                    </div>
+                                )}
                             </div>
                         )}
 
-                        {/* Tab 3: Calculation (Existing Logic) */}
-                        {activeTab === 'calculation' && (
+                        {/* Tab 3: Capital Increase Calculator */}
+                        {activeTab === 'capital_increase' && (
                             <div className="fade-in">
                                 <div className="p-8 md:p-10">
-                                    <h2 className="text-2xl font-bold mb-6 text-slate-700 border-l-4 border-blue-600 pl-4">股利與增資試算</h2>
-
-                                    {!isVerified && (
-                                        <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-8 text-yellow-800">
-                                            <i className="fas fa-exclamation-triangle mr-2"></i> 請先至「身份驗證」頁籤完成登入，以自動帶入股數。
+                                    <h2 className="text-2xl font-bold mb-6 text-slate-700 border-l-4 border-blue-600 pl-4">增資計算機</h2>
+                                    {getTabStatus('capital_increase') === 'construction' ? (
+                                        <div className="flex flex-col items-center justify-center py-20">
+                                            <div className="w-20 h-20 bg-orange-100 text-orange-400 rounded-full flex items-center justify-center mb-6 text-3xl"><i className="fas fa-hard-hat"></i></div>
+                                            <h3 className="text-xl font-bold text-slate-600 mb-2">功能建置中</h3>
+                                            <p className="text-slate-500">此功能尚在準備中，敬請期待。</p>
                                         </div>
-                                    )}
-
-                                    {/* Timeline Accordion */}
-                                    <div className="bg-blue-50 border-l-4 border-blue-500 mb-10 rounded-r-lg shadow-sm no-print overflow-hidden">
-                                        <div className="p-4 flex justify-between items-center cursor-pointer hover:bg-blue-100 transition-colors" onClick={() => setIsTimelineExpanded(!isTimelineExpanded)}>
-                                            <h3 className="text-lg font-bold text-blue-800 flex items-center"><i className="fas fa-calendar-alt mr-3"></i>主要事件時程</h3>
-                                            <div className="flex items-center text-blue-600 text-sm font-bold"><span className="mr-2">{isTimelineExpanded ? '收合' : '展開'}</span><i className={`fas fa-chevron-down transition-transform duration-300 ${isTimelineExpanded ? 'rotate-180' : ''}`}></i></div>
+                                    ) : !isVerified ? (
+                                        <div className="flex flex-col items-center justify-center py-20">
+                                            <div className="w-20 h-20 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mb-6 text-3xl"><i className="fas fa-lock"></i></div>
+                                            <h3 className="text-xl font-bold text-slate-600 mb-2">需要身份驗證</h3>
+                                            <p className="text-slate-500 mb-6">請先至頁籤1完成身份驗證後，即可使用增資計算機。</p>
+                                            <button onClick={() => setActiveTab('identity')} className="bg-blue-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-blue-700 transition shadow-md"><i className="fas fa-arrow-left mr-2"></i>前往身份驗證</button>
                                         </div>
-                                        <div className={`accordion-content ${isTimelineExpanded ? 'expanded' : ''}`}>
-                                            <div className="p-6 pt-0 border-t border-blue-100 mt-2">
-                                                <ul className="space-y-3 text-slate-700 font-medium text-base list-disc pl-5">
-                                                    <li>3/28 股東會通過應付股利</li>
-                                                    <li>5月 調查增資意願及金額範圍</li>
-                                                    <li>7/6 結帳公佈淨值與增資價格</li>
-                                                    <li>7/20 增資收件截止</li>
-                                                    <li>8/20 股利發放</li>
-                                                </ul>
-                                            </div>
-                                        </div>
-                                    </div>
-
+                                    ) : (
+                                    <div>
                                     {/* Inputs */}
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
                                         <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
@@ -871,145 +1777,615 @@
                                         </div>
 
                                         <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 flex flex-col justify-center">
+                                            {/* Identity Type Lock */}
                                             <div className="flex gap-4 mb-6">
-                                                <label className={`flex-1 p-3 border rounded text-center cursor-pointer ${type === 'natural' ? 'bg-blue-100 border-blue-500 text-blue-700 font-bold' : 'bg-white'}`}><input type="radio" checked={type === 'natural'} onChange={() => setType('natural')} className="hidden" />自然人</label>
-                                                <label className={`flex-1 p-3 border rounded text-center cursor-pointer ${type === 'legal' ? 'bg-purple-100 border-purple-500 text-purple-700 font-bold' : 'bg-white'}`}><input type="radio" checked={type === 'legal'} onChange={() => setType('legal')} className="hidden" />法人</label>
+                                                <label className={`flex-1 p-3 border rounded text-center cursor-pointer ${type === 'natural' ? 'bg-blue-100 border-blue-500 text-blue-700 font-bold' : (isVerified ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white')}`}>
+                                                    <input type="radio" checked={type === 'natural'} onChange={() => !isVerified && setType('natural')} disabled={isVerified} className="hidden" />自然人
+                                                </label>
+                                                <label className={`flex-1 p-3 border rounded text-center cursor-pointer ${type === 'legal' ? 'bg-purple-100 border-purple-500 text-purple-700 font-bold' : (isVerified ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white')}`}>
+                                                    <input type="radio" checked={type === 'legal'} onChange={() => !isVerified && setType('legal')} disabled={isVerified} className="hidden" />法人
+                                                </label>
                                             </div>
                                             <div className="text-xs text-slate-500">
-                                                * 自然人單筆股利超過 $20,000 需扣 {config.tax.rate * 100}% 二代健保
+                                                * 自然人單筆股利超過 $20,000 需扣 {config.tax.rate * 100}% 二代健保; 法人免扣。
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* Results */}
+                                    {/* Results Logic Flow */}
                                     {result && (
-                                        <div className="fade-in space-y-6">
-                                            <div className="bg-white border rounded-xl shadow-sm p-6">
-                                                <div className="flex justify-between items-center mb-4 border-b pb-4">
-                                                    <span className="text-lg font-bold text-slate-700">可運用股利總淨額</span>
-                                                    <span className="text-2xl font-bold text-blue-600">{formatMoney(result.totalNetDividend)}</span>
+                                        <div className="fade-in space-y-8">
+                                            {/* 1. Dividend Info */}
+                                            <div className="bg-white border rounded-xl shadow-sm overflow-hidden">
+                                                <div className="bg-slate-100 p-4 border-b flex justify-between items-center">
+                                                    <h3 className="font-bold text-slate-700">1. 股利明細</h3>
                                                 </div>
-
-                                                <label className="flex items-center gap-3 cursor-pointer mb-4">
-                                                    <div className={`w-6 h-6 rounded border flex items-center justify-center ${willingToOffset ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300'}`}>
-                                                        {willingToOffset && <i className="fas fa-check text-xs"></i>}
-                                                    </div>
-                                                    <input type="checkbox" checked={willingToOffset} onChange={e => setWillingToOffset(e.target.checked)} className="hidden" />
-                                                    <span className="font-bold">我願意以股利抵繳增資股款</span>
-                                                </label>
-
-                                                <div className={`transition-all duration-300 ${willingToOffset ? 'opacity-100 max-h-96' : 'opacity-50 max-h-0 overflow-hidden'}`}>
-                                                    <div className="bg-green-50 p-4 rounded-lg flex justify-between items-center mb-4">
-                                                        <div>
-                                                            <label className="block text-green-800 font-bold text-sm">欲抵繳股數 (上限 {result.maxOffsetSharesPossible} 股)</label>
-                                                            <input type="text" className="bg-transparent border-b-2 border-green-400 text-xl font-bold text-green-700 w-32 focus:outline-none" value={formatInput(offsetShares)} onChange={handleNumChange(setOffsetShares)} placeholder="0" />
+                                                <div className="p-6">
+                                                    <div className="space-y-2 mb-4">
+                                                        {result.dividendResults.map((div) => (
+                                                            <div key={div.id} className="flex justify-between text-sm">
+                                                                <span>{div.label}所得(${formatInput(div.amount)}*持有股數)</span>
+                                                                <span className="font-mono text-slate-600">${formatInput(div.gross)}</span>
+                                                            </div>
+                                                        ))}
+                                                        <hr className="border-dashed" />
+                                                        <div className="flex justify-between text-sm text-slate-500">
+                                                            <span>=股利總額</span>
+                                                            <span>${formatInput(result.dividendResults.reduce((sum, d) => sum + d.gross, 0))}</span>
                                                         </div>
-                                                        <div className="text-right">
-                                                            <div className="text-xs text-green-600">抵繳金額</div>
-                                                            <div className="text-xl font-bold text-green-700">{formatMoney(result.finalOffsetCost)}</div>
+                                                        <div className="flex justify-between text-sm text-red-400">
+                                                            <span>二代健保扣除額 ({type === 'natural' ? '2.11%' : '0%'})</span>
+                                                            <span>-${formatInput(result.dividendResults.reduce((sum, d) => sum + d.hi, 0))}</span>
                                                         </div>
                                                     </div>
+                                                    <div className="bg-blue-50 p-4 rounded-lg flex justify-between items-center text-blue-900">
+                                                        <span className="font-bold">小計：股利淨額</span>
+                                                        <span className="text-2xl font-bold">${formatInput(result.totalNetDividend)}</span>
+                                                    </div>
                                                 </div>
+                                            </div>
 
-                                                <div className="bg-yellow-50 p-4 rounded-lg flex justify-between items-center">
-                                                    <div>
-                                                        <label className="block text-yellow-800 font-bold text-sm">額外現金認購股數</label>
-                                                        <input type="text"
-                                                            disabled={config.forceFullOffset && result.maxOffsetSharesPossible > 0 && (!willingToOffset || (Number(offsetShares) || 0) < result.maxOffsetSharesPossible)}
-                                                            className="bg-transparent border-b-2 border-yellow-400 text-xl font-bold text-yellow-800 w-32 focus:outline-none disabled:opacity-50"
-                                                            value={formatInput(additionalShares)}
-                                                            onChange={handleNumChange(setAdditionalShares)}
-                                                            placeholder="0"
-                                                        />
+                                            {/* 2. Action & Decision */}
+                                            <div className="bg-white border-2 border-blue-100 rounded-xl shadow-md overflow-hidden relative">
+                                                <button
+                                                    onClick={() => { setWillingToOffset(false); setAdditionalShares(''); setOffsetShares(''); }}
+                                                    className="absolute top-4 right-4 text-xs bg-slate-200 hover:bg-slate-300 text-slate-600 px-2 py-1 rounded"
+                                                >
+                                                    <i className="fas fa-undo mr-1"></i>重置
+                                                </button>
+
+                                                <div className="p-6 text-center">
+                                                    <h3 className="text-xl font-bold text-slate-700 mb-6">2. 是否參與本次增資？</h3>
+
+                                                    <div className="inline-flex bg-slate-100 p-1 rounded-full mb-6">
+                                                        <button
+                                                            className={`px-8 py-3 rounded-full font-bold transition-all ${!willingToOffset ? 'bg-red-500 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-200'}`}
+                                                            onClick={() => setWillingToOffset(false)}
+                                                        >
+                                                            否
+                                                        </button>
+                                                        <button
+                                                            className={`px-8 py-3 rounded-full font-bold transition-all ${willingToOffset ? 'bg-green-500 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-200'}`}
+                                                            onClick={() => { setWillingToOffset(true); setAdditionalShares(''); }}
+                                                        >
+                                                            是
+                                                        </button>
                                                     </div>
-                                                    <div className="text-right">
-                                                        <div className="text-xs text-yellow-700">額外應補金額</div>
-                                                        <div className="text-xl font-bold text-yellow-800">{formatMoney(result.extraCost)}</div>
-                                                    </div>
+
+                                                    {/* Branching Logic */}
+                                                    {!willingToOffset ? (
+                                                        <div className="mt-4 p-6 bg-red-50 rounded-xl border border-red-100 fade-in">
+                                                            <div className="text-slate-600 mb-2">您選擇 <span className="font-bold text-red-600">不參與</span> 增資</div>
+                                                            <div className="text-sm text-slate-500 mb-4">預計將領回全額股利現金</div>
+                                                            <div className="text-3xl font-bold text-red-600">
+                                                                實際應收付金額： <span className="text-green-600">+${formatInput(result.totalNetDividend)}</span> (領回)
+                                                            </div>
+                                                            <button onClick={handleSaveSubscription} disabled={isProcessing} className="mt-6 w-full bg-red-600 text-white py-3 rounded-lg font-bold hover:bg-red-700 shadow-md disabled:opacity-50 transition">
+                                                                {isProcessing ? <><i className="fas fa-spinner fa-spin mr-2"></i>儲存中...</> : <><i className="fas fa-check mr-2"></i>確認不參與增資</>}
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="mt-4 text-left fade-in">
+                                                            <div className="mb-6">
+                                                                <label className="block font-bold text-slate-700 mb-2">請輸入欲認購股數 (增資價格 ${formatInput(config.subscriptionPrice)}/股)</label>
+                                                                <input
+                                                                    type="text"
+                                                                    className="w-full text-2xl p-4 border-2 border-blue-500 rounded-lg text-center font-bold text-blue-700 outline-none"
+                                                                    value={formatInput(additionalShares)}
+                                                                    onChange={handleNumChange(setAdditionalShares)}
+                                                                    placeholder="請輸入股數"
+                                                                />
+                                                            </div>
+
+                                                            <div className="bg-slate-50 p-4 rounded-lg space-y-3 text-sm border border-slate-200 mb-6">
+                                                                <div className="flex justify-between">
+                                                                    <span>認購總價金 ({formatInput(Number(additionalShares) || 0)} 股 x ${formatInput(config.subscriptionPrice)})</span>
+                                                                    <span className="font-mono">${formatInput(result.extraCost)}</span>
+                                                                </div>
+                                                                <div className="flex justify-between text-green-600">
+                                                                    <span>股利抵繳金額 (上限 ${formatInput(result.totalNetDividend)})</span>
+                                                                    <span>-${formatInput(Math.min(result.extraCost, result.totalNetDividend))}</span>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="p-6 bg-blue-50 rounded-xl border border-blue-100 text-center">
+                                                                <div className="text-slate-600 mb-2">計算結果</div>
+                                                                <div className="text-3xl font-bold text-blue-800">
+                                                                    {result.extraCost > result.totalNetDividend ? (
+                                                                        <span>實際應補繳金額： <span className="text-red-500">${formatInput(result.extraCost - result.totalNetDividend)}</span></span>
+                                                                    ) : (
+                                                                        <span>實際應退回金額： <span className="text-green-600">+${formatInput(result.totalNetDividend - result.extraCost)}</span> (領回)</span>
+                                                                    )}
+                                                                </div>
+                                                                <button onClick={handleSaveSubscription} disabled={isProcessing || !additionalShares} className="mt-6 w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md disabled:opacity-50 transition">
+                                                                    {isProcessing ? <><i className="fas fa-spinner fa-spin mr-2"></i>儲存中...</> : <><i className="fas fa-paper-plane mr-2"></i>確認認購送出</>}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
 
                                             {/* Preview Card */}
-                                            <div id="print-section" className="bg-white border-4 border-slate-800 rounded-xl p-8 print-border">
-                                                <div className="text-center mb-4">
-                                                    <h3 className="text-2xl font-bold">{config.companyName}</h3>
-                                                    <p>試算確認單</p>
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-4 text-sm md:text-base">
-                                                    <div>姓名：{name}</div><div className="text-right">總持有：{formatInput(result.totalShares)} 股</div>
-                                                    <div className="col-span-2 border-b border-dashed my-2"></div>
-                                                    <div>1. 股利總淨額</div><div className="text-right font-bold text-blue-700">{formatMoney(result.totalNetDividend)}</div>
-                                                    <div className="col-span-2 bg-slate-50 p-2 rounded text-xs text-slate-500">
-                                                        {result.dividendResults.map((item) => (
-                                                            <div key={item.id} className="flex justify-between">
-                                                                <span>{item.label}:</span>
-                                                                <span>{formatMoney(item.net)} <span className="scale-75 inline-block origin-right">(稅前 {formatMoney(item.gross)})</span></span>
+                                            {result && (
+                                                <div>
+                                                    <div id="print-section" className="bg-white border-4 border-slate-800 rounded-xl p-8 print-border mt-10 text-xl font-medium text-slate-900">
+                                                        <div className="text-center mb-8">
+                                                            <h3 className="text-4xl font-extrabold mb-3 tracking-wide">{config.companyName}</h3>
+                                                            <div className="inline-block border-b-4 border-slate-800 pb-2 mb-2">
+                                                                <h4 className="text-3xl font-bold">股利增資金額確認書</h4>
                                                             </div>
-                                                        ))}
+                                                        </div>
+                                                        <div className="space-y-6">
+                                                            <div className="flex justify-between items-end border-b-2 border-slate-200 pb-4">
+                                                                <div className="text-2xl">姓名：<span className="font-bold">{name}</span></div>
+                                                                <div className="text-xl text-slate-600">總持有：<span className="font-bold text-slate-900">{formatInput(result.totalShares)}</span> 股</div>
+                                                            </div>
+
+                                                            <div className="space-y-4">
+                                                                {/* 1. Gross Dividend */}
+                                                                <div className="flex justify-between items-center bg-slate-50 p-4 rounded-lg">
+                                                                    <span className="text-xl font-bold text-slate-700">1. 股利總額</span>
+                                                                    <span className="text-2xl font-bold text-blue-700 font-mono tracking-tight">${formatInput(result.dividendResults.reduce((sum, d) => sum + d.gross, 0))}</span>
+                                                                </div>
+
+                                                                {/* 2. NHI Deduction */}
+                                                                <div className="flex justify-between items-center bg-slate-50 p-4 rounded-lg">
+                                                                    <span className="text-xl font-bold text-slate-700">2. 二代健保扣除數</span>
+                                                                    <span className="text-2xl font-bold text-red-500 font-mono tracking-tight">-${formatInput(result.dividendResults.reduce((sum, d) => sum + d.hi, 0))}</span>
+                                                                </div>
+
+                                                                {/* 3. Subscription Deduction */}
+                                                                <div className="flex justify-between items-center bg-slate-50 p-4 rounded-lg">
+                                                                    <span className="text-xl font-bold text-slate-700">3. 認購新股扣除數 <span className="text-base font-normal text-slate-500">({formatInput(result.totalNewShares)}股)</span></span>
+                                                                    <span className="text-2xl font-bold text-red-500 font-mono tracking-tight">-${formatInput(result.totalCost)}</span>
+                                                                </div>
+                                                            </div>
+
+                                                            <div className="border-t-4 border-slate-800 pt-6 mt-6">
+                                                                <div className="flex justify-between items-center">
+                                                                    <span className="text-3xl font-extrabold text-slate-900">應收付淨額</span>
+                                                                    <div className="text-right">
+                                                                        <div className={`text-5xl font-extrabold font-mono ${result.finalBalance >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                                                                            ${formatInput(result.finalBalance)}
+                                                                        </div>
+                                                                        <div className="text-sm text-slate-400 mt-2 font-bold">
+                                                                            {result.finalBalance >= 0 ? '(公司應付股東款項)' : '(股東應補繳款項)'}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-center mt-8 pt-4 border-t border-slate-200">
+                                                                <span className="text-2xl font-bold text-slate-400">日期: {new Date().toLocaleDateString()}</span>
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                    <div>2. 認購新股 ({formatInput(result.totalNewShares)}股)</div><div className="text-right text-red-600">-{formatMoney(result.totalCost)}</div>
-                                                    <div className="col-span-2 border-b border-black my-2"></div>
-                                                    <div className="font-bold text-lg">應收付淨額</div>
-                                                    <div className={`text-right font-bold text-2xl ${result.finalBalance >= 0 ? 'text-blue-700' : 'text-red-600'}`}>
-                                                        {formatMoney(Math.abs(result.finalBalance))}
-                                                        <span className="text-sm ml-1 text-slate-500">{result.finalBalance >= 0 ? '(公司應付)' : '(股東應補)'}</span>
+
+                                                    <div className="flex justify-center gap-4 mt-8 no-print">
+                                                        <button onClick={handleDownloadImage} disabled={isCapturing} className="bg-slate-700 text-white px-8 py-3 rounded-lg font-bold hover:bg-slate-800 shadow-md transform transition active:scale-95 flex items-center justify-center whitespace-nowrap min-w-[150px]">
+                                                            <i className="fas fa-download mr-2"></i>下載圖片
+                                                        </button>
+                                                        {isMobile && (
+                                                        <button onClick={handleShareImage} disabled={isCapturing} className="bg-[#06C755] text-white px-8 py-3 rounded-lg font-bold hover:bg-[#05b54d] shadow-md transform transition active:scale-95 flex items-center justify-center whitespace-nowrap min-w-[150px]">
+                                                            <i className="fab fa-line mr-2"></i>LINE 分享
+                                                        </button>
+                                                        )}
                                                     </div>
                                                 </div>
-                                                <div className="text-center mt-6 no-print">
-                                                    <button onClick={handleDownloadImage} disabled={isCapturing} className="bg-blue-600 text-white px-6 py-2 rounded-full shadow hover:bg-blue-700 text-sm">
-                                                        {isCapturing ? '生成中...' : '下載確認單圖片'}
-                                                    </button>
+                                            )}
+
+                                            {/* Integrated Documents Section (ALL Docs 1-6) - Only if Willing to Offset */}
+                                            {willingToOffset && result && (
+                                                <div id="capital-docs-section" className="mt-8 pt-8 border-t border-blue-200 fade-in no-print">
+                                                    <div className="text-center mb-6">
+                                                        <h3 className="font-bold text-2xl text-slate-800 flex justify-center items-center"><i className="fas fa-file-signature text-blue-600 mr-3"></i>增資認購文件</h3>
+                                                        <p className="text-slate-500 mt-2 text-sm">請依序完成以下文件簽署</p>
+                                                    </div>
+
+                                                    {/* Document List */}
+                                                    <div className="space-y-4">
+                                                        {config.documents.filter(doc => doc.audience === 'all' || doc.audience === type).map(doc => {
+                                                            const isExpanded = expandedDocId === doc.id;
+                                                            const isPaperOnly = doc.type === 'paper_only';
+                                                            const isHybrid = doc.type === 'hybrid';
+
+                                                            const handleExpand = () => {
+                                                                if (isExpanded) {
+                                                                    setExpandedDocId(null);
+                                                                } else {
+                                                                    setExpandedDocId(doc.id);
+                                                                    setSignatureImg(null);
+                                                                    if (type === 'natural' && isHybrid) {
+                                                                        setSignMethod('online');
+                                                                    } else {
+                                                                        setSignMethod('paper');
+                                                                    }
+                                                                }
+                                                            };
+
+                                                            return (
+                                                                <div key={doc.id} className={`border rounded-xl overflow-hidden transition-all ${isExpanded ? 'border-blue-500 shadow-lg' : 'border-slate-200 bg-white hover:border-blue-300'}`}>
+                                                                    <div onClick={handleExpand} className={`p-6 cursor-pointer flex justify-between items-center ${isExpanded ? 'bg-blue-50' : 'bg-white'}`}>
+                                                                        <div className="flex items-center gap-4">
+                                                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isExpanded ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                                                                                <i className={`fas ${doc.id.includes('offset') || doc.id.includes('invest') ? 'fa-file-invoice-dollar' : 'fa-file-contract'}`}></i>
+                                                                            </div>
+                                                                            <div>
+                                                                                <h3 className={`font-bold text-lg ${isExpanded ? 'text-blue-800' : 'text-slate-700'}`}>{doc.title}</h3>
+                                                                                <p className="text-xs text-slate-500">{doc.note}</p>
+                                                                            </div>
+                                                                        </div>
+                                                                        <i className={`fas fa-chevron-down transition-transform ${isExpanded ? 'rotate-180 text-blue-600' : 'text-slate-300'}`}></i>
+                                                                    </div>
+
+                                                                    <div className={`accordion-content ${isExpanded ? 'expanded' : ''} bg-slate-50`}>
+                                                                        <div className="p-6 border-t border-blue-100">
+                                                                            <div className="flex flex-col lg:flex-row gap-8">
+                                                                                {/* Document Preview */}
+                                                                                <div className="lg:w-2/3 bg-white p-2 rounded shadow-inner overflow-auto border border-slate-200" style={{ maxHeight: '80vh' }}>
+                                                                                    <div className="scale-75 origin-top-left w-[133%]">
+                                                                                        <DocumentPreview docId={doc.id} data={isSubscriptionConfirmed ? { shareholderId, shareholderName: name, ...shareholderInfo, sharesMap, totalShares: result?.totalShares, totalNewShares: result?.totalNewShares, offsetCost: result?.finalOffsetCost, extraCost: result?.extraCost, totalNetDividend: result?.totalNetDividend, totalGrossDividend: result?.totalGrossDividend, healthInsuranceDeduction: result?.dividendResults?.reduce((sum, d) => sum + d.hi, 0) || 0, remainingDividendCash: result?.remainingDividendCash, totalCost: result?.totalCost } : { shareholderId, shareholderName: name, ...shareholderInfo, sharesMap }} signatureImg={signatureImg} config={config} fundSources={fundSources} onToggleFundSource={toggleFundSource} />
+                                                                                    </div>
+                                                                                </div>
+
+                                                                                {/* Action Panel */}
+                                                                                <div className="lg:w-1/3 space-y-6">
+                                                                                    {type === 'natural' && isHybrid && (
+                                                                                        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                                                                                            <h4 className="font-bold mb-3 text-slate-700 text-sm">簽署方式</h4>
+                                                                                            <div className="flex gap-2">
+                                                                                                <button onClick={() => setSignMethod('online')} className={`flex-1 py-2 rounded-lg border text-sm font-bold transition ${signMethod === 'online' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>數位簽名</button>
+                                                                                                <button onClick={() => setSignMethod('paper')} className={`flex-1 py-2 rounded-lg border text-sm font-bold transition ${signMethod === 'paper' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>紙本/上傳</button>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    )}
+
+                                                                                    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                                                                                        {signMethod === 'online' && !isPaperOnly ? (
+                                                                                            <div className="space-y-4">
+                                                                                                <div>
+                                                                                                    <p className="text-sm text-slate-500 mb-2 font-bold">請在下方簽名：</p>
+                                                                                                    <SignatureCanvas onSave={setSignatureImg} onClear={() => setSignatureImg(null)} />
+                                                                                                </div>
+                                                                                                <button onClick={async () => {
+                                                                                                    const data = await handleGenerateDoc(doc.id, { signatureImage: signatureImg, isSigned: true });
+                                                                                                    if (data) alert('簽核版已產生並儲存！');
+                                                                                                }} disabled={!signatureImg || isProcessing} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md disabled:opacity-50 transition">
+                                                                                                    {isProcessing ? <i className="fas fa-spinner fa-spin"></i> : <><i className="fas fa-paper-plane mr-2"></i>送出簽核</>}
+                                                                                                </button>
+                                                                                                <div className="text-center text-xs text-slate-400 mt-2">-- 或 --</div>
+                                                                                            </div>
+                                                                                        ) : (
+                                                                                            doc.id !== 'doc_offset' && (
+                                                                                                <div className="bg-yellow-50 p-4 rounded-lg mb-4 text-sm text-yellow-800 border border-yellow-200">
+                                                                                                    <i className="fas fa-info-circle mr-1"></i> 請下載或分享文件，簽署後拍照上傳。
+                                                                                                </div>
+                                                                                            )
+                                                                                        )}
+
+                                                                                        <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-1'} gap-3 mb-4 mt-6`}>
+                                                                                            <button onClick={() => handleGeneratePDF('download', doc.id)} className="border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center shadow-sm">
+                                                                                                <i className="fas fa-download mr-2"></i>下載 PDF
+                                                                                            </button>
+                                                                                            {isMobile && (
+                                                                                            <button onClick={() => handleGeneratePDF('share', doc.id)} className="bg-[#06C755] text-white py-3 rounded-lg font-bold hover:bg-[#05b54d] transition flex items-center justify-center shadow-sm">
+                                                                                                <i className="fab fa-line mr-2"></i>Line
+                                                                                            </button>
+                                                                                            )}
+                                                                                        </div>
+
+                                                                                        {/* ★★★ 文件產生狀態顯示 ★★★ */}
+                                                                                        {docGenResults[doc.id] && (
+                                                                                            <div className={`mt-4 p-2.5 rounded text-xs ${docGenResults[doc.id].success ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                                                                                                <i className={`fas ${docGenResults[doc.id].success ? 'fa-check-circle' : 'fa-times-circle'} mr-1`}></i>
+                                                                                                {docGenResults[doc.id].success ? '原檔已產生' : (docGenResults[doc.id].error || '產生失敗')}
+                                                                                            </div>
+                                                                                        )}
+
+                                                                                        <div className="mt-6 pt-4 border-t border-slate-100">
+                                                                                            {doc.id === 'doc_offset' ? (
+                                                                                                <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                                                                                                    <p className="text-red-700 font-bold text-sm flex items-center"><i className="fas fa-exclamation-triangle mr-2"></i>本文件需繳回正本</p>
+                                                                                                    <p className="text-sm text-red-600 mt-2">請於股東會現場交付，或郵寄正本：</p>
+                                                                                                    <div className="mt-3 bg-white p-3 rounded border border-red-100 text-sm text-slate-700 space-y-1">
+                                                                                                        <div><span className="font-bold">收件人：</span>陳英傑</div>
+                                                                                                        <div><span className="font-bold">手　機：</span>0912-754-402</div>
+                                                                                                        <div className="mt-1"><span className="font-bold">地址：</span>文山指南郵局 i郵箱（箱體編號 #2233）</div>
+                                                                                                        <div className="text-xs text-slate-400 mt-1 ml-8">參考地址：116台北市文山區指南路2段115號</div>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            ) : type === 'legal' && doc.id !== 'doc_offset' ? (
+                                                                                                <div>
+                                                                                                    <label className="block text-sm font-bold text-slate-700 mb-3">上傳已用印文件</label>
+                                                                                                    <div className="space-y-2">
+                                                                                                        <button onClick={() => document.getElementById(`file-upload-${doc.id}`).click()} className="w-full border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
+                                                                                                            <i className="fas fa-file-upload"></i>
+                                                                                                            <span>選擇檔案</span>
+                                                                                                        </button>
+                                                                                                        <button onClick={() => document.getElementById(`camera-upload-${doc.id}`).click()} className="w-full border border-green-300 text-green-700 py-3 rounded-lg font-bold hover:bg-green-50 transition flex items-center justify-center gap-2">
+                                                                                                            <i className="fas fa-camera"></i>
+                                                                                                            <span>拍照上傳</span>
+                                                                                                        </button>
+                                                                                                        <input id={`file-upload-${doc.id}`} type="file" accept="image/*,application/pdf" onChange={(e) => handleFileUpload(e, 'paper')} className="hidden" />
+                                                                                                        <input id={`camera-upload-${doc.id}`} type="file" accept="image/*" capture="environment" onChange={(e) => handleFileUpload(e, 'paper')} className="hidden" />
+                                                                                                        <p className="text-xs text-slate-400 text-center">支援 PDF、JPG、PNG 格式</p>
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            ) : null}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
                                                 </div>
-                                            </div>
+                                            )}
                                         </div>
                                     )}
+                                    </div>
+                                    )}
+
+                                    {/* 隱藏渲染區已移除，改用後端 Gotenberg 產 PDF */}
                                 </div>
                             </div>
                         )}
 
-                        {/* Tab 4: Capital Docs */}
-                        {activeTab === 'capital_docs' && (
-                            <div className="p-8 fade-in">
-                                <h2 className="text-2xl font-bold mb-6 text-slate-700 border-l-4 border-blue-600 pl-4">增資認購意願書</h2>
 
-                                {!isVerified ? (
-                                    <div className="text-center py-20 bg-slate-50 rounded-lg">
-                                        <i className="fas fa-lock text-4xl text-slate-300 mb-4"></i>
-                                        <p className="text-slate-500">請先進行身份驗證</p>
+                        {/* Tab 4: Shareholder Meeting Docs */}
+                        {activeTab === 'meeting_docs' && (
+                            <div className="p-8 fade-in">
+                                <h2 className="text-2xl font-bold mb-6 text-slate-700 border-l-4 border-blue-600 pl-4">股東會文件</h2>
+
+                                {getTabStatus('meeting_docs') === 'construction' ? (
+                                    <div className="flex flex-col items-center justify-center py-20">
+                                        <div className="w-20 h-20 bg-orange-100 text-orange-400 rounded-full flex items-center justify-center mb-6 text-3xl"><i className="fas fa-hard-hat"></i></div>
+                                        <h3 className="text-xl font-bold text-slate-600 mb-2">功能建置中</h3>
+                                        <p className="text-slate-500">此功能尚在準備中，敬請期待。</p>
+                                    </div>
+                                ) : !isVerified ? (
+                                    <div className="flex flex-col items-center justify-center py-20">
+                                        <div className="w-20 h-20 bg-slate-100 text-slate-400 rounded-full flex items-center justify-center mb-6 text-3xl">
+                                            <i className="fas fa-lock"></i>
+                                        </div>
+                                        <h3 className="text-xl font-bold text-slate-600 mb-2">需要身份驗證</h3>
+                                        <p className="text-slate-500 mb-6">請先至頁籤1完成身份驗證後，即可使用股東會功能。</p>
+                                        <button onClick={() => setActiveTab('identity')} className="bg-blue-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-blue-700 transition shadow-md">
+                                            <i className="fas fa-arrow-left mr-2"></i>前往身份驗證
+                                        </button>
                                     </div>
                                 ) : (
-                                    <div className="flex flex-col lg:flex-row gap-8">
-                                        <div className="lg:w-2/3 bg-slate-200 p-4 rounded-xl overflow-auto shadow-inner" style={{ maxHeight: '800px' }}>
-                                            <DocumentPreview docId="doc1" data={{ shareholderId, shareholderName: name, sharesMap, totalShares: result?.totalShares, totalNewShares: result?.totalNewShares, offsetCost: result?.finalOffsetCost, extraCost: result?.extraCost }} signatureImg={signatureImg} config={config} />
-                                        </div>
-                                        <div className="lg:w-1/3 space-y-6">
-                                            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                                                <h4 className="font-bold mb-4 text-slate-700">簽署方式</h4>
-                                                <div className="flex gap-2 mb-4">
-                                                    <button onClick={() => setSignMethod('online')} className={`flex-1 py-2 rounded-lg border text-sm font-bold ${signMethod === 'online' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'border-slate-200 text-slate-500'}`}>線上簽核</button>
-                                                    <button onClick={() => setSignMethod('paper')} className={`flex-1 py-2 rounded-lg border text-sm font-bold ${signMethod === 'paper' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'border-slate-200 text-slate-500'}`}>紙本上傳</button>
-                                                </div>
-
-                                                {signMethod === 'online' ? (
-                                                    <div className="space-y-4">
-                                                        <div><p className="text-sm text-slate-500 mb-2">請簽名：</p><SignatureCanvas onSave={setSignatureImg} onClear={() => setSignatureImg(null)} /></div>
-                                                        <button onClick={() => handleGeneratePDF('submit', 'doc1')} disabled={!signatureImg || isProcessing} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md disabled:opacity-50">
-                                                            {isProcessing ? <i className="fas fa-spinner fa-spin"></i> : '送出簽核'}
-                                                        </button>
+                                    <div className="space-y-8">
+                                        {/* ===== 1. 線上報到 ===== */}
+                                        {(() => {
+                                            const checkinActive = config.checkinEnabled === 'active';
+                                            const checkinNotStarted = isNotStarted(config.checkinStartTime);
+                                            const checkinExpired = isExpired(config.checkinDeadline);
+                                            return (
+                                        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                                            <div className="bg-blue-50 p-4 border-b border-blue-100">
+                                                <h3 className="font-bold text-lg text-blue-800 flex items-center">
+                                                    <i className="fas fa-qrcode mr-3 text-blue-500"></i>線上報到
+                                                    <span className="ml-auto text-xs text-slate-500 font-normal">
+                                                        {config.checkinStartTime && `開放：${config.checkinStartTime}`}
+                                                        {config.checkinStartTime && config.checkinDeadline && ' ～ '}
+                                                        {config.checkinDeadline && `截止：${config.checkinDeadline}`}
+                                                    </span>
+                                                </h3>
+                                            </div>
+                                            <div className="p-6">
+                                                {!checkinActive ? (
+                                                    <div className="text-center py-6 text-slate-500">
+                                                        <i className="fas fa-clock text-3xl text-slate-300 mb-3"></i>
+                                                        <p className="font-bold">報到功能尚未開放</p>
+                                                    </div>
+                                                ) : checkinNotStarted ? (
+                                                    <div className="text-center py-6 text-slate-500">
+                                                        <i className="fas fa-clock text-3xl text-amber-300 mb-3"></i>
+                                                        <p className="font-bold text-amber-600">報到尚未開放</p>
+                                                        <p className="text-sm mt-1">開放時間：{config.checkinStartTime}</p>
+                                                    </div>
+                                                ) : checkinExpired ? (
+                                                    <div className="text-center py-6 text-slate-500">
+                                                        <i className="fas fa-hourglass-end text-3xl text-red-300 mb-3"></i>
+                                                        <p className="font-bold text-red-500">報到已截止</p>
+                                                    </div>
+                                                ) : checkinStatus ? (
+                                                    <div className="text-center py-6">
+                                                        <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                                                            <i className="fas fa-check-circle"></i>
+                                                        </div>
+                                                        <h4 className="text-xl font-bold text-green-700 mb-2">已完成報到</h4>
+                                                        <p className="text-slate-500">
+                                                            出席方式：<span className="font-bold text-slate-700">{checkinStatus === 'online' ? '線上出席' : '實體出席'}</span>
+                                                        </p>
+                                                        <p className="text-xs text-slate-400 mt-2">股東戶號: {shareholderId} | {name}</p>
                                                     </div>
                                                 ) : (
-                                                    <div className="space-y-4">
-                                                        <button onClick={() => handleGeneratePDF('download', 'doc1')} className="w-full border-2 border-slate-800 text-slate-800 py-3 rounded-lg font-bold hover:bg-slate-50">下載 PDF</button>
-                                                        <div className="border-t pt-4">
-                                                            <label className="block text-sm font-bold text-slate-700 mb-2">上傳已簽署文件</label>
-                                                            <input type="file" accept="image/*,application/pdf" onChange={(e) => handleFileUpload(e, 'paper')} className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:bg-blue-50 file:text-blue-700" />
+                                                    <div className="text-center py-4">
+                                                        <p className="text-slate-600 mb-6">請選擇您的出席方式：</p>
+                                                        <div className="flex flex-col sm:flex-row gap-4 max-w-md mx-auto">
+                                                            <button
+                                                                onClick={() => handleCheckin('physical')}
+                                                                disabled={isProcessing}
+                                                                className="flex-1 bg-emerald-600 text-white py-4 px-6 rounded-xl font-bold hover:bg-emerald-700 transition shadow-md disabled:opacity-50 flex flex-col items-center gap-2"
+                                                            >
+                                                                <i className="fas fa-building text-2xl"></i>
+                                                                <span>實體出席</span>
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleCheckin('online')}
+                                                                disabled={isProcessing}
+                                                                className="flex-1 bg-blue-600 text-white py-4 px-6 rounded-xl font-bold hover:bg-blue-700 transition shadow-md disabled:opacity-50 flex flex-col items-center gap-2"
+                                                            >
+                                                                <i className="fas fa-laptop text-2xl"></i>
+                                                                <span>線上出席</span>
+                                                            </button>
                                                         </div>
                                                     </div>
                                                 )}
                                             </div>
-                                            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                                                <h4 className="font-bold mb-2">匯款憑證</h4>
-                                                <input type="file" accept="image/*,application/pdf" onChange={(e) => handleFileUpload(e, 'proof')} className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:bg-green-50 file:text-green-700" />
+                                        </div>
+                                            );
+                                        })()}
+
+                                        {/* ===== 2. 電子投票 ===== */}
+                                        {(() => {
+                                            const voteActive = config.voteEnabled === 'active';
+                                            const voteNotStarted = isNotStarted(config.voteStartTime);
+                                            const voteExpired = isExpired(config.voteDeadline);
+                                            const dynamicProposals = config.proposals || [];
+                                            const allVoted = dynamicProposals.length > 0 && dynamicProposals.every(p => votes[p.id]);
+                                            const choiceLabelMap = { agree: '贊成', oppose: '反對', abstain: '棄權' };
+                                            const choiceIconMap = { agree: 'fa-thumbs-up', oppose: 'fa-thumbs-down', abstain: 'fa-minus-circle' };
+                                            const choiceColorMap = {
+                                                agree: { active: 'bg-green-100 border-green-500 text-green-700', text: 'text-green-600' },
+                                                oppose: { active: 'bg-red-100 border-red-500 text-red-700', text: 'text-red-600' },
+                                                abstain: { active: 'bg-yellow-100 border-yellow-500 text-yellow-700', text: 'text-yellow-600' }
+                                            };
+                                            return (
+                                        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                                            <div className="bg-purple-50 p-4 border-b border-purple-100">
+                                                <h3 className="font-bold text-lg text-purple-800 flex items-center">
+                                                    <i className="fas fa-vote-yea mr-3 text-purple-500"></i>電子投票
+                                                    <span className="ml-auto text-xs text-slate-500 font-normal">
+                                                        {config.voteStartTime && `開放：${config.voteStartTime}`}
+                                                        {config.voteStartTime && config.voteDeadline && ' ～ '}
+                                                        {config.voteDeadline && `截止：${config.voteDeadline}`}
+                                                    </span>
+                                                </h3>
+                                            </div>
+                                            <div className="p-6">
+                                                {!voteActive ? (
+                                                    <div className="text-center py-6 text-slate-500">
+                                                        <i className="fas fa-clock text-3xl text-slate-300 mb-3"></i>
+                                                        <p className="font-bold">投票功能尚未開放</p>
+                                                    </div>
+                                                ) : voteNotStarted ? (
+                                                    <div className="text-center py-6 text-slate-500">
+                                                        <i className="fas fa-clock text-3xl text-amber-300 mb-3"></i>
+                                                        <p className="font-bold text-amber-600">投票尚未開放</p>
+                                                        <p className="text-sm mt-1">開放時間：{config.voteStartTime}</p>
+                                                    </div>
+                                                ) : voteExpired ? (
+                                                    <div className="text-center py-6 text-slate-500">
+                                                        <i className="fas fa-hourglass-end text-3xl text-red-300 mb-3"></i>
+                                                        <p className="font-bold text-red-500">投票已截止</p>
+                                                    </div>
+                                                ) : isVoteSubmitted ? (
+                                                    <div className="text-center py-6">
+                                                        <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                                                            <i className="fas fa-check-circle"></i>
+                                                        </div>
+                                                        <h4 className="text-xl font-bold text-green-700 mb-4">投票已送出</h4>
+                                                        <div className="max-w-sm mx-auto text-left space-y-2">
+                                                            {dynamicProposals.map(p => (
+                                                                <div key={p.id} className="flex justify-between items-center bg-slate-50 p-3 rounded-lg text-sm">
+                                                                    <span className="text-slate-600">{p.title}</span>
+                                                                    <span className={`font-bold ${(choiceColorMap[votes[p.id]] || {}).text || 'text-slate-500'}`}>
+                                                                        {choiceLabelMap[votes[p.id]] || votes[p.id] || '-'}
+                                                                    </span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-6">
+                                                        {dynamicProposals.map(proposal => (
+                                                            <div key={proposal.id} className="bg-slate-50 p-5 rounded-xl border border-slate-200">
+                                                                <h4 className="font-bold text-slate-700 mb-4">{proposal.title}</h4>
+                                                                <div className="flex gap-3">
+                                                                    {(proposal.options || ['贊成', '反對', '棄權']).map(opt => {
+                                                                        const optKey = opt === '贊成' ? 'agree' : opt === '反對' ? 'oppose' : opt === '棄權' ? 'abstain' : opt;
+                                                                        const isSelected = votes[proposal.id] === optKey;
+                                                                        const colors = choiceColorMap[optKey] || { active: 'bg-blue-100 border-blue-500 text-blue-700' };
+                                                                        return (
+                                                                            <button
+                                                                                key={optKey}
+                                                                                onClick={() => setVotes(prev => ({ ...prev, [proposal.id]: optKey }))}
+                                                                                className={`flex-1 py-3 px-4 rounded-lg border-2 font-bold transition text-sm flex flex-col items-center gap-1
+                                                                                    ${isSelected ? colors.active : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'}`}
+                                                                            >
+                                                                                <i className={`fas ${choiceIconMap[optKey] || 'fa-check'}`}></i>{opt}
+                                                                            </button>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+
+                                                        <button
+                                                            onClick={handleVoteSubmit}
+                                                            disabled={isProcessing || !allVoted}
+                                                            className="w-full bg-purple-600 text-white py-4 rounded-xl font-bold hover:bg-purple-700 transition shadow-md disabled:opacity-50"
+                                                        >
+                                                            {isProcessing ? <i className="fas fa-spinner fa-spin"></i> : <><i className="fas fa-paper-plane mr-2"></i>送出投票</>}
+                                                        </button>
+                                                        <p className="text-xs text-slate-400 text-center">送出後不可修改，請確認後再送出</p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                            );
+                                        })()}
+
+                                        {/* ===== 3. 文件瀏覽 ===== */}
+                                        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+                                            <div className="bg-slate-50 p-4 border-b border-slate-200">
+                                                <h3 className="font-bold text-lg text-slate-700 flex items-center">
+                                                    <i className="fas fa-file-alt mr-3 text-slate-500"></i>會議文件瀏覽
+                                                </h3>
+                                            </div>
+                                            <div className="p-6">
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                                                    {(config.meetingDocs || []).map(doc => (
+                                                        <div
+                                                            key={doc.id}
+                                                            onClick={() => setViewingDoc(viewingDoc === doc.id ? null : doc.id)}
+                                                            className={`p-5 rounded-xl border-2 cursor-pointer transition-all ${viewingDoc === doc.id ? 'border-blue-500 bg-blue-50 shadow-md' : 'border-slate-200 bg-white hover:border-blue-300 hover:shadow-sm'}`}
+                                                        >
+                                                            <div className="flex items-start gap-4">
+                                                                <div className={`text-3xl ${viewingDoc === doc.id ? 'text-blue-500' : 'text-slate-300'}`}>
+                                                                    <i className="fas fa-file-pdf"></i>
+                                                                </div>
+                                                                <div>
+                                                                    <h4 className={`font-bold ${viewingDoc === doc.id ? 'text-blue-800' : 'text-slate-700'}`}>{doc.title}</h4>
+                                                                    <p className="text-xs text-slate-500 mt-1">{doc.desc}</p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                {viewingDoc && (() => {
+                                                    const selectedDoc = (config.meetingDocs || []).find(d => d.id === viewingDoc);
+                                                    if (!selectedDoc || !selectedDoc.driveFileId) return null;
+                                                    return (
+                                                    <div className="fade-in">
+                                                        <div className="bg-slate-100 rounded-xl overflow-hidden border border-slate-200">
+                                                            <div className="flex justify-between items-center p-3 bg-slate-200">
+                                                                <span className="text-sm font-bold text-slate-600">
+                                                                    <i className="fas fa-eye mr-2"></i>{selectedDoc.title}
+                                                                </span>
+                                                                <button onClick={() => setViewingDoc(null)} className="text-slate-500 hover:text-slate-700 text-sm">
+                                                                    <i className="fas fa-times mr-1"></i>關閉
+                                                                </button>
+                                                            </div>
+                                                            <iframe
+                                                                src={`https://drive.google.com/file/d/${selectedDoc.driveFileId}/preview`}
+                                                                className="w-full border-0"
+                                                                style={{ height: '600px' }}
+                                                                allow="autoplay"
+                                                                title={selectedDoc.title}
+                                                            ></iframe>
+                                                        </div>
+                                                        <p className="text-xs text-slate-400 text-center mt-2">如無法顯示，請確認您的網路連線或稍後再試</p>
+                                                    </div>
+                                                    );
+                                                })()}
                                             </div>
                                         </div>
                                     </div>
@@ -1017,39 +2393,12 @@
                             </div>
                         )}
 
-                        {/* Tab 5: Shareholder Meeting Docs */}
-                        {activeTab === 'meeting_docs' && (
-                            <div className="p-8 fade-in">
-                                <h2 className="text-2xl font-bold mb-6 text-slate-700 border-l-4 border-blue-600 pl-4">股東會文件</h2>
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                    {['doc2', 'doc3'].map(id => {
-                                        const doc = config.documents.find(d => d.id === id);
-                                        return (
-                                            <div key={id} className="bg-white border rounded-xl p-6 shadow-sm hover:shadow-md transition">
-                                                <div className="text-4xl text-slate-300 mb-4"><i className="fas fa-file-alt"></i></div>
-                                                <h3 className="font-bold text-lg mb-2">{doc?.title}</h3>
-                                                <p className="text-sm text-slate-500 mb-4">適用於 2025 股東常會</p>
-                                                <button className="text-blue-600 font-bold hover:underline" onClick={() => alert("功能尚未開放")}>查看詳情</button>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-
-                    </div>
-
-                    <AdminPanel
-                        isOpen={isAdminOpen}
-                        onClose={() => setIsAdminOpen(false)}
-                        config={config}
-                        onConfigChange={setConfig}
-                    />
+                    </div >
 
                     <div className="text-center mt-10 text-slate-400 text-sm no-print">
                         © 2025 {config.systemName} | 資料僅供試算，實際金額以公司正式通知為準
                     </div>
-                </div>
+                </div >
             );
         }
 
