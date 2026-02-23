@@ -129,8 +129,8 @@
     </style>
 </head>
 
-<body class="bg-gray-100 text-slate-800 font-sans min-h-screen flex items-center justify-center py-10">
-    <div id="root" class="w-full max-w-5xl px-4"></div>
+<body class="bg-gray-100 text-slate-800 font-sans min-h-screen flex items-center justify-center py-4 sm:py-10">
+    <div id="root" class="w-full max-w-5xl px-2 sm:px-4"></div>
 
     <script type="text/babel">
         const { useState, useMemo, useEffect, useRef } = React;
@@ -1008,6 +1008,7 @@
 
             // 產生文件結果
             const [docGenResults, setDocGenResults] = useState({}); // { doc_invest: { success, key, message }, ... }
+            const [previewModalDocId, setPreviewModalDocId] = useState(null); // 手機版文件預覽 modal
 
             // 文件區狀態
             const [selectedDocId, setSelectedDocId] = useState('doc1'); // 對於 CapitalDocs 預設
@@ -1258,143 +1259,110 @@
             };
 
             // PDF/Image Handlers
+            // ★★★ 改用 Gotenberg 後端產 PDF，不再用 html2canvas ★★★
             const handleGeneratePDF = async (action, targetDocId) => {
                 if (!shareholderId) { alert("請先選擇股東身分！"); return; }
-                if (!window.jspdf) { alert("PDF library not loaded"); return; }
-                const { jsPDF } = window.jspdf;
-
                 setIsProcessing(true);
-                // Dynamically find element by ID based on passed docId or defaults
-                const input = document.getElementById(`doc-preview-${targetDocId}`);
-                if (!input) { alert("找不到文件元素"); setIsProcessing(false); return; }
-
                 try {
-                    // ★★★ Robust Fix for Mobile PDF Layout ★★★
-                    // 1. Create a deep clone of the element
-                    const clone = input.cloneNode(true);
-
-                    // 2. Style the clone to force Desktop width (800px standard)
-                    clone.style.width = '800px';
-                    clone.style.minWidth = '800px';
-                    clone.style.maxWidth = '800px';
-                    clone.style.height = 'auto';
-                    clone.style.position = 'absolute';
-                    clone.style.top = '-10000px'; // Move off-screen
-                    clone.style.left = '-10000px';
-                    clone.style.zIndex = '-1';
-                    clone.style.background = '#ffffff'; // Ensure white background
-
-                    // Append to body so it renders
-                    document.body.appendChild(clone);
-
-                    // Small delay to ensure render (sometimes needed for fonts/images)
-                    await new Promise(r => setTimeout(r, 100));
-
-                    // 3. Capture the CLONE instead of the original
-                    const canvas = await html2canvas(clone, {
-                        scale: 3, // A3 fix: Higher scale for better quality
-                        useCORS: true,
-                        logging: false,
-                        backgroundColor: '#ffffff'
-                    });
-
-                    // 4. Remove clone
-                    document.body.removeChild(clone);
-
-                    // 5. Generate PDF with pagination (A2 fix)
-                    const imgData = canvas.toDataURL('image/png');
-                    const pdf = new jsPDF('p', 'mm', 'a4');
-                    const pdfWidth = pdf.internal.pageSize.getWidth();
-                    const pageHeight = pdf.internal.pageSize.getHeight();
-                    const imgHeight = (canvas.height * pdfWidth) / canvas.width;
-                    let heightLeft = imgHeight;
-                    let position = 0;
-
-                    // First page
-                    pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
-                    heightLeft -= pageHeight;
-
-                    // Additional pages if content exceeds one page
-                    while (heightLeft > 0) {
-                        position = heightLeft - imgHeight;
-                        pdf.addPage();
-                        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
-                        heightLeft -= pageHeight;
+                    // 1. 呼叫 generate_doc 產 PDF 並存到 R2
+                    const data = await handleGenerateDoc(targetDocId);
+                    if (!data || !data.success || !data.key) {
+                        setIsProcessing(false);
+                        return;
                     }
+
+                    // 2. 從 R2 下載 PDF
+                    const pdfUrl = config.n8nApiUrl.replace(/\/+$/, '').replace(/\/webhook\/api$/, '').replace(/n8n-dbcapital-service\.zeabur\.app.*/, 'n8n-dbcapital-tool.chieh1025.workers.dev') + '/' + data.key;
+                    // 用 Worker URL 下載
+                    const workerBase = 'https://n8n-dbcapital-tool.chieh1025.workers.dev/';
+                    const downloadUrl = workerBase + data.key;
 
                     const docTitle = config.documents.find(d => d.id === targetDocId)?.title || targetDocId;
                     const filename = `${shareholderId}_${name}_${docTitle}.pdf`;
 
                     if (action === 'download') {
-                        pdf.save(filename);
-                        alert("文件已下載。");
+                        // 直接開啟下載連結
+                        const res = await fetch(downloadUrl);
+                        const blob = await res.blob();
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = filename;
+                        a.click();
+                        URL.revokeObjectURL(url);
                     } else if (action === 'share') {
-                        // D3 fix: Implement share action
-                        const pdfBlob = pdf.output('blob');
-                        const file = new File([pdfBlob], filename, { type: 'application/pdf' });
+                        const res = await fetch(downloadUrl);
+                        const blob = await res.blob();
+                        const file = new File([blob], filename, { type: 'application/pdf' });
                         if (navigator.canShare && navigator.canShare({ files: [file] })) {
                             try {
-                                await navigator.share({
-                                    files: [file],
-                                    title: docTitle,
-                                    text: `${name} 的 ${docTitle}`
-                                });
+                                await navigator.share({ files: [file], title: docTitle, text: `${name} 的 ${docTitle}` });
                             } catch (err) {
                                 console.error('Share failed:', err);
-                                // Fallback to download
-                                pdf.save(filename);
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url; a.download = filename; a.click();
+                                URL.revokeObjectURL(url);
                             }
                         } else {
-                            alert('您的裝置不支援分享 PDF，將改為下載。');
-                            pdf.save(filename);
-                        }
-                    } else if (action === 'submit') {
-                        if (config.n8nApiUrl) {
-                            const pdfBlob = pdf.output('blob');
-                            const reader = new FileReader();
-                            reader.readAsDataURL(pdfBlob);
-                            reader.onloadend = async function () {
-                                const base64data = reader.result;
-                                try {
-                                    await fetch(config.n8nApiUrl, {
-                                        method: 'POST',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ type: 'submit_doc', shareholderId, filename, file: base64data })
-                                    });
-                                    alert(`已成功送出！`);
-                                } catch (e) { alert("上傳失敗"); }
-                            }
-                        } else {
-                            await new Promise(r => setTimeout(r, 1000));
-                            alert(`【測試模式】已成功送出！`);
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url; a.download = filename; a.click();
+                            URL.revokeObjectURL(url);
                         }
                     }
-                } catch (err) { console.error(err); alert("文件生成失敗"); }
+                } catch (err) { console.error(err); alert("文件生成失敗：" + err.message); }
                 setIsProcessing(false);
             };
 
-            const handleFileUpload = async (e, type) => {
+            // ★★★ 法人上傳已用印文件 → R2（帶 _signed 後綴）★★★
+            const handleFileUpload = async (e, docId) => {
                 const file = e.target.files[0];
                 if (!file || !shareholderId) { alert("請先選擇股東身分！"); return; }
                 setIsProcessing(true);
-                // Implementation simplified for brevity: same as before
-                if (config.n8nApiUrl) {
+                try {
                     const reader = new FileReader();
-                    reader.readAsDataURL(file);
-                    reader.onloadend = async function () {
-                        try {
-                            await fetch(config.n8nApiUrl, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ type: 'proof' === type ? 'submit_proof' : 'submit_signed_paper', shareholderId, filename: file.name, file: reader.result })
-                            });
-                            alert("上傳成功");
-                        } catch (e) { alert("上傳失敗"); }
-                        setIsProcessing(false);
+                    const base64 = await new Promise((resolve, reject) => {
+                        reader.onloadend = () => resolve(reader.result);
+                        reader.onerror = reject;
+                        reader.readAsDataURL(file);
+                    });
+
+                    // 產生 _signed 檔名
+                    const now = new Date();
+                    const ts = now.getFullYear().toString()
+                        + String(now.getMonth() + 1).padStart(2, '0')
+                        + String(now.getDate()).padStart(2, '0') + '_'
+                        + String(now.getHours()).padStart(2, '0')
+                        + String(now.getMinutes()).padStart(2, '0')
+                        + String(now.getSeconds()).padStart(2, '0');
+                    const ext = file.name.endsWith('.pdf') ? '.pdf' : '.jpg';
+                    const safeKey = `${shareholderId}_${docId}_${ts}_signed${ext}`;
+
+                    const workerUrl = 'https://n8n-dbcapital-tool.chieh1025.workers.dev/';
+                    const res = await fetch(workerUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 'upload_doc',
+                            uploadSecret: 'dbcapital-upload-2025',
+                            shareholderId,
+                            filename: safeKey,
+                            file: base64
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        setDocGenResults(prev => ({ ...prev, [docId + '_signed']: { success: true, key: data.key } }));
+                        alert('簽核版上傳成功！');
+                    } else {
+                        alert('上傳失敗：' + (data.message || '未知錯誤'));
                     }
-                } else {
-                    setTimeout(() => { alert("測試上傳成功"); setIsProcessing(false); }, 1000);
+                } catch (err) {
+                    console.error('Upload failed:', err);
+                    alert('上傳失敗：' + err.message);
                 }
+                setIsProcessing(false);
                 e.target.value = '';
             };
 
@@ -1600,8 +1568,8 @@
 
             return (
                 <div className="pb-20">
-                    <header className="mb-6 flex justify-between items-center no-print pt-6 px-4">
-                        <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">{config.systemName}</h1>
+                    <header className="mb-4 sm:mb-6 flex justify-between items-center no-print pt-4 sm:pt-6 px-2 sm:px-4">
+                        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-800 tracking-tight">{config.systemName}</h1>
                     </header>
 
                     <div className="bg-white shadow-xl rounded-xl border border-slate-200 card overflow-hidden min-h-[600px]">
@@ -1618,7 +1586,7 @@
 
                         {/* Tab 1: Identity */}
                         {activeTab === 'identity' && (
-                            <div className="p-8 md:p-12 fade-in">
+                            <div className="p-4 sm:p-8 md:p-12 fade-in">
                                 <h2 className="text-2xl font-bold mb-6 text-slate-700 border-l-4 border-blue-600 pl-4">股東身份驗證</h2>
                                 <div className="max-w-md mx-auto space-y-8 py-8">
                                     {!isVerified ? (
@@ -1737,8 +1705,8 @@
                         {/* Tab 3: Capital Increase Calculator */}
                         {activeTab === 'capital_increase' && (
                             <div className="fade-in">
-                                <div className="p-8 md:p-10">
-                                    <h2 className="text-2xl font-bold mb-6 text-slate-700 border-l-4 border-blue-600 pl-4">增資計算機</h2>
+                                <div className="p-4 sm:p-8 md:p-10">
+                                    <h2 className="text-xl sm:text-2xl font-bold mb-4 sm:mb-6 text-slate-700 border-l-4 border-blue-600 pl-4">增資計算機</h2>
                                     {getTabStatus('capital_increase') === 'construction' ? (
                                         <div className="flex flex-col items-center justify-center py-20">
                                             <div className="w-20 h-20 bg-orange-100 text-orange-400 rounded-full flex items-center justify-center mb-6 text-3xl"><i className="fas fa-hard-hat"></i></div>
@@ -1888,9 +1856,9 @@
                                                                 </div>
                                                             </div>
 
-                                                            <div className="p-6 bg-blue-50 rounded-xl border border-blue-100 text-center">
+                                                            <div className="p-4 sm:p-6 bg-blue-50 rounded-xl border border-blue-100 text-center">
                                                                 <div className="text-slate-600 mb-2">計算結果</div>
-                                                                <div className="text-3xl font-bold text-blue-800">
+                                                                <div className="text-xl sm:text-3xl font-bold text-blue-800">
                                                                     {result.extraCost > result.totalNetDividend ? (
                                                                         <span>實際應補繳金額： <span className="text-red-500">${formatInput(result.extraCost - result.totalNetDividend)}</span></span>
                                                                     ) : (
@@ -1909,64 +1877,64 @@
                                             {/* Preview Card */}
                                             {result && (
                                                 <div>
-                                                    <div id="print-section" className="bg-white border-4 border-slate-800 rounded-xl p-8 print-border mt-10 text-xl font-medium text-slate-900">
-                                                        <div className="text-center mb-8">
-                                                            <h3 className="text-4xl font-extrabold mb-3 tracking-wide">{config.companyName}</h3>
+                                                    <div id="print-section" className="bg-white border-4 border-slate-800 rounded-xl p-4 sm:p-8 print-border mt-10 text-base sm:text-xl font-medium text-slate-900">
+                                                        <div className="text-center mb-4 sm:mb-8">
+                                                            <h3 className="text-2xl sm:text-4xl font-extrabold mb-2 sm:mb-3 tracking-wide">{config.companyName}</h3>
                                                             <div className="inline-block border-b-4 border-slate-800 pb-2 mb-2">
-                                                                <h4 className="text-3xl font-bold">股利增資金額確認書</h4>
+                                                                <h4 className="text-xl sm:text-3xl font-bold">股利增資金額確認書</h4>
                                                             </div>
                                                         </div>
-                                                        <div className="space-y-6">
-                                                            <div className="flex justify-between items-end border-b-2 border-slate-200 pb-4">
-                                                                <div className="text-2xl">姓名：<span className="font-bold">{name}</span></div>
-                                                                <div className="text-xl text-slate-600">總持有：<span className="font-bold text-slate-900">{formatInput(result.totalShares)}</span> 股</div>
+                                                        <div className="space-y-4 sm:space-y-6">
+                                                            <div className="flex flex-col sm:flex-row justify-between sm:items-end border-b-2 border-slate-200 pb-4 gap-1">
+                                                                <div className="text-lg sm:text-2xl">姓名：<span className="font-bold">{name}</span></div>
+                                                                <div className="text-base sm:text-xl text-slate-600">總持有：<span className="font-bold text-slate-900">{formatInput(result.totalShares)}</span> 股</div>
                                                             </div>
 
                                                             <div className="space-y-4">
                                                                 {/* 1. Gross Dividend */}
-                                                                <div className="flex justify-between items-center bg-slate-50 p-4 rounded-lg">
-                                                                    <span className="text-xl font-bold text-slate-700">1. 股利總額</span>
-                                                                    <span className="text-2xl font-bold text-blue-700 font-mono tracking-tight">${formatInput(result.dividendResults.reduce((sum, d) => sum + d.gross, 0))}</span>
+                                                                <div className="flex justify-between items-center bg-slate-50 p-3 sm:p-4 rounded-lg">
+                                                                    <span className="text-sm sm:text-xl font-bold text-slate-700">1. 股利總額</span>
+                                                                    <span className="text-lg sm:text-2xl font-bold text-blue-700 font-mono tracking-tight">${formatInput(result.dividendResults.reduce((sum, d) => sum + d.gross, 0))}</span>
                                                                 </div>
 
                                                                 {/* 2. NHI Deduction */}
-                                                                <div className="flex justify-between items-center bg-slate-50 p-4 rounded-lg">
-                                                                    <span className="text-xl font-bold text-slate-700">2. 二代健保扣除數</span>
-                                                                    <span className="text-2xl font-bold text-red-500 font-mono tracking-tight">-${formatInput(result.dividendResults.reduce((sum, d) => sum + d.hi, 0))}</span>
+                                                                <div className="flex justify-between items-center bg-slate-50 p-3 sm:p-4 rounded-lg">
+                                                                    <span className="text-sm sm:text-xl font-bold text-slate-700">2. 二代健保扣除數</span>
+                                                                    <span className="text-lg sm:text-2xl font-bold text-red-500 font-mono tracking-tight">-${formatInput(result.dividendResults.reduce((sum, d) => sum + d.hi, 0))}</span>
                                                                 </div>
 
                                                                 {/* 3. Subscription Deduction */}
-                                                                <div className="flex justify-between items-center bg-slate-50 p-4 rounded-lg">
-                                                                    <span className="text-xl font-bold text-slate-700">3. 認購新股扣除數 <span className="text-base font-normal text-slate-500">({formatInput(result.totalNewShares)}股)</span></span>
-                                                                    <span className="text-2xl font-bold text-red-500 font-mono tracking-tight">-${formatInput(result.totalCost)}</span>
+                                                                <div className="flex justify-between items-center bg-slate-50 p-3 sm:p-4 rounded-lg">
+                                                                    <span className="text-sm sm:text-xl font-bold text-slate-700">3. 認購新股扣除數 <span className="text-xs sm:text-base font-normal text-slate-500">({formatInput(result.totalNewShares)}股)</span></span>
+                                                                    <span className="text-lg sm:text-2xl font-bold text-red-500 font-mono tracking-tight">-${formatInput(result.totalCost)}</span>
                                                                 </div>
                                                             </div>
 
-                                                            <div className="border-t-4 border-slate-800 pt-6 mt-6">
+                                                            <div className="border-t-4 border-slate-800 pt-4 sm:pt-6 mt-4 sm:mt-6">
                                                                 <div className="flex justify-between items-center">
-                                                                    <span className="text-3xl font-extrabold text-slate-900">應收付淨額</span>
+                                                                    <span className="text-xl sm:text-3xl font-extrabold text-slate-900">應收付淨額</span>
                                                                     <div className="text-right">
-                                                                        <div className={`text-5xl font-extrabold font-mono ${result.finalBalance >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
+                                                                        <div className={`text-2xl sm:text-5xl font-extrabold font-mono ${result.finalBalance >= 0 ? 'text-blue-600' : 'text-red-600'}`}>
                                                                             ${formatInput(result.finalBalance)}
                                                                         </div>
-                                                                        <div className="text-sm text-slate-400 mt-2 font-bold">
+                                                                        <div className="text-xs sm:text-sm text-slate-400 mt-1 sm:mt-2 font-bold">
                                                                             {result.finalBalance >= 0 ? '(公司應付股東款項)' : '(股東應補繳款項)'}
                                                                         </div>
                                                                     </div>
                                                                 </div>
                                                             </div>
-                                                            <div className="text-center mt-8 pt-4 border-t border-slate-200">
-                                                                <span className="text-2xl font-bold text-slate-400">日期: {new Date().toLocaleDateString()}</span>
+                                                            <div className="text-center mt-6 sm:mt-8 pt-4 border-t border-slate-200">
+                                                                <span className="text-lg sm:text-2xl font-bold text-slate-400">日期: {new Date().toLocaleDateString()}</span>
                                                             </div>
                                                         </div>
                                                     </div>
 
-                                                    <div className="flex justify-center gap-4 mt-8 no-print">
-                                                        <button onClick={handleDownloadImage} disabled={isCapturing} className="bg-slate-700 text-white px-8 py-3 rounded-lg font-bold hover:bg-slate-800 shadow-md transform transition active:scale-95 flex items-center justify-center whitespace-nowrap min-w-[150px]">
+                                                    <div className="flex justify-center gap-3 sm:gap-4 mt-6 sm:mt-8 no-print">
+                                                        <button onClick={handleDownloadImage} disabled={isCapturing} className="bg-slate-700 text-white px-4 sm:px-8 py-3 rounded-lg font-bold hover:bg-slate-800 shadow-md transform transition active:scale-95 flex items-center justify-center whitespace-nowrap flex-1 sm:flex-none sm:min-w-[150px]">
                                                             <i className="fas fa-download mr-2"></i>下載圖片
                                                         </button>
                                                         {isMobile && (
-                                                        <button onClick={handleShareImage} disabled={isCapturing} className="bg-[#06C755] text-white px-8 py-3 rounded-lg font-bold hover:bg-[#05b54d] shadow-md transform transition active:scale-95 flex items-center justify-center whitespace-nowrap min-w-[150px]">
+                                                        <button onClick={handleShareImage} disabled={isCapturing} className="bg-[#06C755] text-white px-4 sm:px-8 py-3 rounded-lg font-bold hover:bg-[#05b54d] shadow-md transform transition active:scale-95 flex items-center justify-center whitespace-nowrap flex-1 sm:flex-none sm:min-w-[150px]">
                                                             <i className="fab fa-line mr-2"></i>LINE 分享
                                                         </button>
                                                         )}
@@ -2019,17 +1987,25 @@
                                                                     </div>
 
                                                                     <div className={`accordion-content ${isExpanded ? 'expanded' : ''} bg-slate-50`}>
-                                                                        <div className="p-6 border-t border-blue-100">
-                                                                            <div className="flex flex-col lg:flex-row gap-8">
-                                                                                {/* Document Preview */}
+                                                                        <div className="p-4 sm:p-6 border-t border-blue-100">
+                                                                            {/* ★ 手機版：預覽按鈕 + 全螢幕 Modal */}
+                                                                            {isMobile && (
+                                                                                <button onClick={() => setPreviewModalDocId(doc.id)} className="w-full mb-4 border border-blue-300 text-blue-700 py-3 rounded-lg font-bold hover:bg-blue-50 transition flex items-center justify-center gap-2">
+                                                                                    <i className="fas fa-eye"></i><span>預覽文件內容</span>
+                                                                                </button>
+                                                                            )}
+                                                                            <div className="flex flex-col lg:flex-row gap-4 lg:gap-8">
+                                                                                {/* Document Preview - 桌面版才顯示 inline */}
+                                                                                {!isMobile && (
                                                                                 <div className="lg:w-2/3 bg-white p-2 rounded shadow-inner overflow-auto border border-slate-200" style={{ maxHeight: '80vh' }}>
                                                                                     <div className="scale-75 origin-top-left w-[133%]">
                                                                                         <DocumentPreview docId={doc.id} data={isSubscriptionConfirmed ? { shareholderId, shareholderName: name, ...shareholderInfo, sharesMap, totalShares: result?.totalShares, totalNewShares: result?.totalNewShares, offsetCost: result?.finalOffsetCost, extraCost: result?.extraCost, totalNetDividend: result?.totalNetDividend, totalGrossDividend: result?.totalGrossDividend, healthInsuranceDeduction: result?.dividendResults?.reduce((sum, d) => sum + d.hi, 0) || 0, remainingDividendCash: result?.remainingDividendCash, totalCost: result?.totalCost } : { shareholderId, shareholderName: name, ...shareholderInfo, sharesMap }} signatureImg={signatureImg} config={config} fundSources={fundSources} onToggleFundSource={toggleFundSource} />
                                                                                     </div>
                                                                                 </div>
+                                                                                )}
 
                                                                                 {/* Action Panel */}
-                                                                                <div className="lg:w-1/3 space-y-6">
+                                                                                <div className={`${isMobile ? 'w-full' : 'lg:w-1/3'} space-y-4 sm:space-y-6`}>
                                                                                     {type === 'natural' && isHybrid && (
                                                                                         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
                                                                                             <h4 className="font-bold mb-3 text-slate-700 text-sm">簽署方式</h4>
@@ -2106,9 +2082,14 @@
                                                                                                             <i className="fas fa-camera"></i>
                                                                                                             <span>拍照上傳</span>
                                                                                                         </button>
-                                                                                                        <input id={`file-upload-${doc.id}`} type="file" accept="image/*,application/pdf" onChange={(e) => handleFileUpload(e, 'paper')} className="hidden" />
-                                                                                                        <input id={`camera-upload-${doc.id}`} type="file" accept="image/*" capture="environment" onChange={(e) => handleFileUpload(e, 'paper')} className="hidden" />
+                                                                                                        <input id={`file-upload-${doc.id}`} type="file" accept="image/*,application/pdf" onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
+                                                                                                        <input id={`camera-upload-${doc.id}`} type="file" accept="image/*" capture="environment" onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
                                                                                                         <p className="text-xs text-slate-400 text-center">支援 PDF、JPG、PNG 格式</p>
+                                                                                                        {docGenResults[doc.id + '_signed'] && (
+                                                                                                            <div className="mt-2 p-2 rounded text-xs bg-green-50 text-green-700 border border-green-200">
+                                                                                                                <i className="fas fa-check-circle mr-1"></i>簽核版已上傳
+                                                                                                            </div>
+                                                                                                        )}
                                                                                                     </div>
                                                                                                 </div>
                                                                                             ) : null}
@@ -2394,6 +2375,25 @@
                         )}
 
                     </div >
+
+                    {/* ★★★ 手機版文件預覽 全螢幕 Modal ★★★ */}
+                    {previewModalDocId && (
+                        <div className="fixed inset-0 z-50 bg-black/60 flex flex-col" onClick={() => setPreviewModalDocId(null)}>
+                            <div className="bg-white flex items-center justify-between px-4 py-3 shadow-md shrink-0" onClick={e => e.stopPropagation()}>
+                                <h3 className="font-bold text-slate-800 text-sm truncate">
+                                    {config.documents?.find(d => d.id === previewModalDocId)?.title || '文件預覽'}
+                                </h3>
+                                <button onClick={() => setPreviewModalDocId(null)} className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200">
+                                    <i className="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div className="flex-1 overflow-auto bg-white" onClick={e => e.stopPropagation()}>
+                                <div className="p-4 min-w-[640px]">
+                                    <DocumentPreview docId={previewModalDocId} data={isSubscriptionConfirmed ? { shareholderId, shareholderName: name, ...shareholderInfo, sharesMap, totalShares: result?.totalShares, totalNewShares: result?.totalNewShares, offsetCost: result?.finalOffsetCost, extraCost: result?.extraCost, totalNetDividend: result?.totalNetDividend, totalGrossDividend: result?.totalGrossDividend, healthInsuranceDeduction: result?.dividendResults?.reduce((sum, d) => sum + d.hi, 0) || 0, remainingDividendCash: result?.remainingDividendCash, totalCost: result?.totalCost } : { shareholderId, shareholderName: name, ...shareholderInfo, sharesMap }} signatureImg={signatureImg} config={config} fundSources={fundSources} onToggleFundSource={toggleFundSource} />
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="text-center mt-10 text-slate-400 text-sm no-print">
                         © 2025 {config.systemName} | 資料僅供試算，實際金額以公司正式通知為準
