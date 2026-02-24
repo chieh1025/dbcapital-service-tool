@@ -421,6 +421,45 @@
                 setAdditionalShares('');
             };
 
+            // ★★★ 登出函數 ★★★
+            const handleLogout = () => {
+                setIsVerified(false);
+                setShareholderId('');
+                setName('');
+                setCheckinStatus(null);
+                setVotes({});
+                setIsVoteSubmitted(false);
+                setViewingDoc(null);
+                setIsSubscriptionConfirmed(false);
+                setActiveTab('identity');
+                sessionStorage.removeItem('dbcapital_session');
+            };
+
+            // ★★★ 30 分鐘無操作自動登出 ★★★
+            const SESSION_TIMEOUT = 30 * 60 * 1000;
+            const logoutTimerRef = useRef(null);
+
+            const resetLogoutTimer = () => {
+                if (logoutTimerRef.current) clearTimeout(logoutTimerRef.current);
+                if (isVerified) {
+                    logoutTimerRef.current = setTimeout(() => {
+                        alert('已超過 30 分鐘未操作，系統自動登出。');
+                        handleLogout();
+                    }, SESSION_TIMEOUT);
+                }
+            };
+
+            useEffect(() => {
+                if (!isVerified) return;
+                resetLogoutTimer();
+                const events = ['click', 'touchstart', 'keydown', 'scroll'];
+                events.forEach(e => window.addEventListener(e, resetLogoutTimer));
+                return () => {
+                    if (logoutTimerRef.current) clearTimeout(logoutTimerRef.current);
+                    events.forEach(e => window.removeEventListener(e, resetLogoutTimer));
+                };
+            }, [isVerified]);
+
             const handleVerifyIdentity = async () => {
                 if (!shareholderId) return;
                 if (!inputVerifyCode) {
@@ -437,8 +476,12 @@
                             body: JSON.stringify({ type: 'verify', shareholderId: shareholderId, code: inputVerifyCode })
                         });
 
-                        if (!response.ok) throw new Error(`Status: ${response.status}`);
                         const data = await response.json();
+                        if (!response.ok) {
+                            alert(data.message || `驗證失敗 (${response.status})`);
+                            setIsVerifying(false);
+                            return;
+                        }
 
                         if (data.success) {
                             setIsVerified(true);
@@ -1123,7 +1166,7 @@
                     <header className="mb-4 sm:mb-6 flex justify-between items-center no-print pt-4 sm:pt-6 px-2 sm:px-4">
                         <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-800 tracking-tight">{config.systemName}</h1>
                         {isVerified && (
-                            <button onClick={() => { setIsVerified(false); setShareholderId(''); setName(''); setCheckinStatus(null); setVotes({}); setIsVoteSubmitted(false); setViewingDoc(null); setIsSubscriptionConfirmed(false); setActiveTab('identity'); }} className="text-sm text-slate-400 hover:text-red-500 transition flex items-center gap-1">
+                            <button onClick={handleLogout} className="text-sm text-slate-400 hover:text-red-500 transition flex items-center gap-1">
                                 <i className="fas fa-sign-out-alt"></i><span className="hidden sm:inline">登出</span>
                             </button>
                         )}
@@ -1200,7 +1243,7 @@
                                             <button onClick={() => handleTabClick('capital_increase')} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-lg mb-3">
                                                 前往增資計算機 <i className="fas fa-arrow-right ml-2"></i>
                                             </button>
-                                            <button onClick={() => { setIsVerified(false); setShareholderId(''); setName(''); setCheckinStatus(null); setVotes({}); setIsVoteSubmitted(false); setViewingDoc(null); }} className="text-slate-400 hover:text-slate-600 underline text-sm">
+                                            <button onClick={handleLogout} className="text-slate-400 hover:text-slate-600 underline text-sm">
                                                 登出 / 重新驗證
                                             </button>
                                         </div>
