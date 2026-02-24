@@ -477,7 +477,8 @@
                                 phone: data.phone || '',
                                 representative: data.representative || '',
                                 docOffsetConfirmed: data.docOffsetConfirmed === 'V',
-                                docStatuses: data.docStatuses || {}
+                                docStatuses: data.docStatuses || {},
+                                docFiles: data.docFiles || {}
                             });
                             if (data.shares) {
                                 if (typeof data.shares === 'object') {
@@ -762,6 +763,31 @@
                     }
                 } catch (err) { console.error(err); alert("文件生成失敗：" + err.message); }
                 setIsProcessing(false);
+            };
+
+            // ★★★ 從 R2 下載已產生的文件 ★★★
+            const handleDownloadExisting = async (docId) => {
+                const fileKey = shareholderInfo.docFiles[docId];
+                if (!fileKey) return;
+                const workerBase = 'https://n8n-dbcapital-tool.chieh1025.workers.dev/';
+                const downloadUrl = workerBase + encodeURIComponent(fileKey);
+                const docTitle = config.documents.find(d => d.id === docId)?.title || docId;
+                const filename = `${shareholderId}_${name}_${docTitle}.pdf`;
+                try {
+                    const res = await fetch(downloadUrl);
+                    const blob = await res.blob();
+                    if (isMobile && navigator.canShare) {
+                        const file = new File([blob], filename, { type: 'application/pdf' });
+                        if (navigator.canShare({ files: [file] })) {
+                            try { await navigator.share({ files: [file], title: docTitle }); } catch (e) {}
+                            return;
+                        }
+                    }
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = filename; a.click();
+                    URL.revokeObjectURL(url);
+                } catch (e) { console.error('Download failed:', e); alert('下載失敗'); }
             };
 
             // ★★★ 法人上傳已用印文件 → R2（帶 _signed 後綴）★★★
@@ -1522,6 +1548,12 @@
 
                                                                     <div className={`accordion-content ${isExpanded ? 'expanded' : ''} bg-slate-50`}>
                                                                         <div className="p-4 sm:p-6 border-t border-blue-100">
+                                                                            {/* ★ 下載上次已產生的文件 */}
+                                                                            {shareholderInfo.docFiles[doc.id] && (
+                                                                                <button onClick={() => handleDownloadExisting(doc.id)} className="w-full mb-4 bg-green-50 border border-green-300 text-green-700 py-3 rounded-lg font-bold hover:bg-green-100 transition flex items-center justify-center gap-2">
+                                                                                    <i className="fas fa-file-download"></i><span>下載上次文件</span>
+                                                                                </button>
+                                                                            )}
                                                                             {/* ★ 手機版：預覽按鈕 + 全螢幕 Modal */}
                                                                             {isMobile && (
                                                                                 <button onClick={() => { if (!previewHtmlMap[doc.id]) handlePreviewDoc(doc.id); setPreviewModalDocId(doc.id); }} className="w-full mb-4 border border-blue-300 text-blue-700 py-3 rounded-lg font-bold hover:bg-blue-50 transition flex items-center justify-center gap-2">
