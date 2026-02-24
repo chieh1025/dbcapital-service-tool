@@ -138,6 +138,7 @@
             ],
 
             subscriptionPrice: 160000,
+            capitalIncreaseEnabled: 'true',
 
             // ★★★ 股東戶號清單 (從 API 動態載入，這裡只是 fallback) ★★★
             shareholderOptions: [],
@@ -1365,26 +1366,33 @@
 
                                             {/* 2. Action & Decision */}
                                             <div className="bg-white border-2 border-blue-100 rounded-xl shadow-md overflow-hidden relative">
-                                                <button
-                                                    onClick={() => { setWillingToOffset(false); setAdditionalShares(''); setOffsetShares(''); }}
-                                                    className="absolute top-4 right-4 text-xs bg-slate-200 hover:bg-slate-300 text-slate-600 px-2 py-1 rounded"
-                                                >
-                                                    <i className="fas fa-undo mr-1"></i>重置
-                                                </button>
-
-                                                <div className="p-6 text-center">
+                                                {config.capitalIncreaseEnabled !== 'true' && (
+                                                    <div className="bg-amber-50 border-b border-amber-200 px-4 py-3 text-center">
+                                                        <span className="text-amber-700 font-bold"><i className="fas fa-lock mr-2"></i>增資填寫已截止</span>
+                                                    </div>
+                                                )}
+                                                <div className="p-6 text-center relative">
+                                                    <button
+                                                        onClick={() => { setWillingToOffset(false); setAdditionalShares(''); setOffsetShares(''); }}
+                                                        className="absolute top-0 right-0 text-xs bg-slate-200 hover:bg-slate-300 text-slate-600 px-2 py-1 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                                                        disabled={config.capitalIncreaseEnabled !== 'true'}
+                                                    >
+                                                        <i className="fas fa-undo mr-1"></i>重置
+                                                    </button>
                                                     <h3 className="text-xl font-bold text-slate-700 mb-6">2. 是否參與本次增資？</h3>
 
                                                     <div className="inline-flex bg-slate-100 p-1 rounded-full mb-6">
                                                         <button
-                                                            className={`px-8 py-3 rounded-full font-bold transition-all ${!willingToOffset ? 'bg-red-500 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-200'}`}
+                                                            className={`px-8 py-3 rounded-full font-bold transition-all ${!willingToOffset ? 'bg-red-500 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-200'} disabled:opacity-50 disabled:cursor-not-allowed`}
                                                             onClick={() => setWillingToOffset(false)}
+                                                            disabled={config.capitalIncreaseEnabled !== 'true'}
                                                         >
                                                             否
                                                         </button>
                                                         <button
-                                                            className={`px-8 py-3 rounded-full font-bold transition-all ${willingToOffset ? 'bg-green-500 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-200'}`}
+                                                            className={`px-8 py-3 rounded-full font-bold transition-all ${willingToOffset ? 'bg-green-500 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-200'} disabled:opacity-50 disabled:cursor-not-allowed`}
                                                             onClick={() => { setWillingToOffset(true); setAdditionalShares(''); }}
+                                                            disabled={config.capitalIncreaseEnabled !== 'true'}
                                                         >
                                                             是
                                                         </button>
@@ -1398,7 +1406,7 @@
                                                             <div className="text-3xl font-bold text-red-600">
                                                                 實際應收付金額： <span className="text-green-600">+${formatInput(result.totalNetDividend)}</span> (領回)
                                                             </div>
-                                                            <button onClick={handleSaveSubscription} disabled={isProcessing} className="mt-6 w-full bg-red-600 text-white py-3 rounded-lg font-bold hover:bg-red-700 shadow-md disabled:opacity-50 transition">
+                                                            <button onClick={handleSaveSubscription} disabled={isProcessing || config.capitalIncreaseEnabled !== 'true'} className="mt-6 w-full bg-red-600 text-white py-3 rounded-lg font-bold hover:bg-red-700 shadow-md disabled:opacity-50 transition">
                                                                 {isProcessing ? <><i className="fas fa-spinner fa-spin mr-2"></i>儲存中...</> : <><i className="fas fa-check mr-2"></i>確認不參與增資</>}
                                                             </button>
                                                         </div>
@@ -1408,10 +1416,11 @@
                                                                 <label className="block font-bold text-slate-700 mb-2">請輸入欲認購股數 (增資價格 ${formatInput(config.subscriptionPrice)}/股)</label>
                                                                 <input
                                                                     type="text"
-                                                                    className="w-full text-2xl p-4 border-2 border-blue-500 rounded-lg text-center font-bold text-blue-700 outline-none"
+                                                                    className="w-full text-2xl p-4 border-2 border-blue-500 rounded-lg text-center font-bold text-blue-700 outline-none disabled:bg-slate-100 disabled:text-slate-400"
                                                                     value={formatInput(additionalShares)}
                                                                     onChange={handleNumChange(setAdditionalShares)}
                                                                     placeholder="請輸入股數"
+                                                                    disabled={config.capitalIncreaseEnabled !== 'true'}
                                                                 />
                                                             </div>
 
@@ -1435,7 +1444,7 @@
                                                                         <span>實際應退回金額： <span className="text-green-600">+${formatInput(result.totalNetDividend - result.extraCost)}</span> (領回)</span>
                                                                     )}
                                                                 </div>
-                                                                <button onClick={handleSaveSubscription} disabled={isProcessing || !additionalShares} className="mt-6 w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md disabled:opacity-50 transition">
+                                                                <button onClick={handleSaveSubscription} disabled={isProcessing || !additionalShares || config.capitalIncreaseEnabled !== 'true'} className="mt-6 w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md disabled:opacity-50 transition">
                                                                     {isProcessing ? <><i className="fas fa-spinner fa-spin mr-2"></i>儲存中...</> : <><i className="fas fa-paper-plane mr-2"></i>確認認購送出</>}
                                                                 </button>
                                                             </div>
