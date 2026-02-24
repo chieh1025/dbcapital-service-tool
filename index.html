@@ -87,8 +87,8 @@
         }
 
         .accordion-content.expanded {
-            max-height: 800px;
-            /* 足夠大的高度 */
+            max-height: 2000px;
+            /* 足夠大的高度，避免長內容被截斷 */
             opacity: 1;
         }
 
@@ -154,11 +154,11 @@
 
             documents: [
                 { id: "doc_offset", title: "1. 債權抵繳股款明細表", type: "paper_only", audience: "all", note: "需紙本簽核正本" },
-                { id: "doc_invest", title: "2. 現金增資投資協議書", type: "hybrid", audience: "all", note: "簽核日不得晚於 3/20" },
-                { id: "doc_client", title: "3. 客戶聲明書", type: "hybrid", audience: "all", note: "簽核日不得晚於 3/20" },
+                { id: "doc_invest", title: "2. 現金增資投資協議書", type: "hybrid", audience: "all", note: "" },
+                { id: "doc_client", title: "3. 客戶聲明書", type: "hybrid", audience: "all", note: "" },
                 { id: "doc_aml_nat", title: "4. 洗錢防制聲明書 (自然人)", type: "hybrid", audience: "natural", note: "" },
                 { id: "doc_aml_leg", title: "5. 洗錢防制聲明書 (法人)", type: "hybrid", audience: "legal", note: "" },
-                { id: "doc_beneficial", title: "6. 所有權人/實質受益人聲明書", type: "hybrid", audience: "legal", note: "簽核日不得晚於 3/20" }
+                { id: "doc_beneficial", title: "6. 所有權人/實質受益人聲明書", type: "hybrid", audience: "legal", note: "" }
             ]
         };
 
@@ -372,6 +372,14 @@
             const [fundSources, setFundSources] = useState({});
             const toggleFundSource = (key) => setFundSources(prev => ({ ...prev, [key]: !prev[key] }));
             const hasFundSourcesSelected = () => Object.values(fundSources).some(v => v);
+            const fundSourcesRef = React.useRef(fundSources);
+            React.useEffect(() => {
+                if (fundSourcesRef.current === fundSources) return; // 跳過初始化
+                fundSourcesRef.current = fundSources;
+                if (expandedDocId && (expandedDocId === 'doc_aml_nat' || expandedDocId === 'doc_aml_leg')) {
+                    handlePreviewDoc(expandedDocId);
+                }
+            }, [fundSources]);
 
             // A3: 文件日期平移 — 若填寫日超出 config 設定的範圍，平移到最早/最晚日
             const getClampedDocDate = () => {
@@ -613,7 +621,7 @@
                         totalCost: result?.totalCost || 0,
                         subscriptionPrice: config.subscriptionPrice || 160000,
                         fundSources: fundSources,
-                        docDate: getClampedDocDate(),
+                        docDate: (docId === 'doc_offset' && config.docFixedDate) ? config.docFixedDate : getClampedDocDate(),
                         // 簽名圖（簽核版才帶）
                         ...(options.signatureImage ? { signatureImage: options.signatureImage } : {}),
                         // 標記是否為簽核版
@@ -670,7 +678,7 @@
                         totalCost: result?.totalCost || 0,
                         subscriptionPrice: config.subscriptionPrice || 160000,
                         fundSources: fundSources,
-                        docDate: getClampedDocDate()
+                        docDate: (docId === 'doc_offset' && config.docFixedDate) ? config.docFixedDate : getClampedDocDate()
                     };
                     const res = await fetch(config.n8nApiUrl, {
                         method: 'POST',
@@ -1014,51 +1022,46 @@
                 setIsProcessing(false);
             };
 
-            const handleShareImage = () => {
-                const element = document.getElementById('print-section');
-                if (!element) return;
-                setIsCapturing(true);
-                html2canvas(element, { scale: 2, backgroundColor: '#ffffff' }).then(canvas => {
-                    canvas.toBlob(async (blob) => {
-                        const file = new File([blob], "confirmation.png", { type: "image/png" });
-                        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                            try {
-                                await navigator.share({
-                                    files: [file],
-                                    title: '股利增資確認書',
-                                    text: '這是我的股利增資試算結果，請查收。'
-                                });
-                            } catch (err) { console.error("Share failed", err); }
-                        } else {
-                            alert("您的裝置不支援直接分享圖片，請使用下載功能。");
-                        }
-                        setIsCapturing(false);
-                    });
-                });
-            };
 
             const handleDownloadImage = () => {
                 const element = document.getElementById('print-section');
                 if (!element) return;
                 setIsCapturing(true);
                 html2canvas(element, { scale: 2, backgroundColor: '#ffffff' }).then(canvas => {
-                    const link = document.createElement('a');
-                    link.href = canvas.toDataURL('image/png');
-                    link.download = `股利增資金額確認書_${name}.png`;
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
-                    setIsCapturing(false);
+                    if (isMobile && navigator.canShare) {
+                        canvas.toBlob(async (blob) => {
+                            const file = new File([blob], `股利增資金額確認書_${name}.png`, { type: 'image/png' });
+                            if (navigator.canShare({ files: [file] })) {
+                                try { await navigator.share({ files: [file], title: '股利增資金額確認書' }); } catch (e) {}
+                            }
+                            setIsCapturing(false);
+                        });
+                    } else {
+                        const link = document.createElement('a');
+                        link.href = canvas.toDataURL('image/png');
+                        link.download = `股利增資金額確認書_${name}.png`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        setIsCapturing(false);
+                    }
                 });
             };
 
             // --- TABS VISUAL ---
+            const handleTabClick = (targetId) => {
+                if (activeTab === 'capital_increase' && targetId !== 'capital_increase' && result && !isSubscriptionConfirmed) {
+                    if (!confirm('您尚未送出增資選項，確定要離開此頁嗎？')) return;
+                }
+                setActiveTab(targetId);
+            };
+
             const MenuItem = ({ id, label, icon }) => {
                 const status = getTabStatus(id);
                 if (status === 'hidden') return null;
                 return (
                     <button
-                        onClick={() => setActiveTab(id)}
+                        onClick={() => handleTabClick(id)}
                         className={`flex-1 py-4 text-center font-bold text-sm md:text-base border-b-4 transition duration-200
                             ${activeTab === id ? 'border-blue-600 text-blue-600 bg-white' : 'border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-50'}`}
                     >
@@ -1073,6 +1076,11 @@
                 <div className="pb-20">
                     <header className="mb-4 sm:mb-6 flex justify-between items-center no-print pt-4 sm:pt-6 px-2 sm:px-4">
                         <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-800 tracking-tight">{config.systemName}</h1>
+                        {isVerified && (
+                            <button onClick={() => { setIsVerified(false); setShareholderId(''); setName(''); setCheckinStatus(null); setVotes({}); setIsVoteSubmitted(false); setViewingDoc(null); setIsSubscriptionConfirmed(false); setActiveTab('identity'); }} className="text-sm text-slate-400 hover:text-red-500 transition flex items-center gap-1">
+                                <i className="fas fa-sign-out-alt"></i><span className="hidden sm:inline">登出</span>
+                            </button>
+                        )}
                     </header>
 
                     <div className="bg-white shadow-xl rounded-xl border border-slate-200 card overflow-hidden min-h-[600px]">
@@ -1157,8 +1165,8 @@
 
                         {/* Tab 2: Monthly Net Value */}
                         {activeTab === 'net_value' && (
-                            <div className="p-8 fade-in">
-                                <h2 className="text-2xl font-bold mb-6 text-slate-700 border-l-4 border-blue-600 pl-4">公司每月淨值公告</h2>
+                            <div className="p-4 sm:p-8 fade-in">
+                                <h2 className="text-xl sm:text-2xl font-bold mb-6 text-slate-700 border-l-4 border-blue-600 pl-4">公司每月淨值公告</h2>
                                 {getTabStatus('net_value') === 'construction' ? (
                                     <div className="flex flex-col items-center justify-center py-20">
                                         <div className="w-20 h-20 bg-orange-100 text-orange-400 rounded-full flex items-center justify-center mb-6 text-3xl"><i className="fas fa-hard-hat"></i></div>
@@ -1178,9 +1186,9 @@
                                             <table className="w-full text-left border-collapse">
                                                 <thead>
                                                     <tr className="bg-slate-100 text-slate-600">
-                                                        <th className="p-4 border-b">期間</th>
-                                                        <th className="p-4 border-b">每股淨值</th>
-                                                        <th className="p-4 border-b">月漲跌</th>
+                                                        <th className="p-2 sm:p-4 border-b">期間</th>
+                                                        <th className="p-2 sm:p-4 border-b">每股淨值</th>
+                                                        <th className="p-2 sm:p-4 border-b">月漲跌</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -1190,9 +1198,9 @@
                                                         const monthlyColor = monthlyChange.startsWith('-') ? 'text-green-600' : (monthlyChange === '-' ? 'text-slate-400' : 'text-red-600');
                                                         return (
                                                             <tr key={idx} className="hover:bg-slate-50">
-                                                                <td className="p-4 border-b">{row.month}</td>
-                                                                <td className="p-4 border-b font-mono font-bold text-slate-700">{typeof row.nav === 'number' ? row.nav.toLocaleString() : row.nav}</td>
-                                                                <td className={`p-4 border-b font-bold ${monthlyColor}`}>{monthlyChange}</td>
+                                                                <td className="p-2 sm:p-4 border-b">{row.month}</td>
+                                                                <td className="p-2 sm:p-4 border-b font-mono font-bold text-slate-700">{typeof row.nav === 'number' ? row.nav.toLocaleString() : row.nav}</td>
+                                                                <td className={`p-2 sm:p-4 border-b font-bold ${monthlyColor}`}>{monthlyChange}</td>
                                                             </tr>
                                                         );
                                                     })}
@@ -1436,11 +1444,6 @@
                                                         <button onClick={handleDownloadImage} disabled={isCapturing} className="bg-slate-700 text-white px-4 sm:px-8 py-3 rounded-lg font-bold hover:bg-slate-800 shadow-md transform transition active:scale-95 flex items-center justify-center whitespace-nowrap flex-1 sm:flex-none sm:min-w-[150px]">
                                                             <i className="fas fa-download mr-2"></i>下載圖片
                                                         </button>
-                                                        {isMobile && (
-                                                        <button onClick={handleShareImage} disabled={isCapturing} className="bg-[#06C755] text-white px-4 sm:px-8 py-3 rounded-lg font-bold hover:bg-[#05b54d] shadow-md transform transition active:scale-95 flex items-center justify-center whitespace-nowrap flex-1 sm:flex-none sm:min-w-[150px]">
-                                                            <i className="fab fa-line mr-2"></i>LINE 分享
-                                                        </button>
-                                                        )}
                                                     </div>
                                                 </div>
                                             )}
@@ -1544,11 +1547,11 @@
                                                                                             <h4 className="font-bold mb-3 text-slate-700 text-sm"><i className="fas fa-wallet mr-1"></i>出資金額來源{!hasFundSourcesSelected() && <span className="text-red-500 ml-1">(必選)</span>}</h4>
                                                                                             <div className="flex flex-wrap gap-2">
                                                                                                 {(type === 'legal' ? ['資本','薪資','營利','借款','受贈','繼承'] : ['薪資','營利','借款','受贈','繼承']).map(src => (
-                                                                                                    <button key={src} onClick={() => { toggleFundSource(src); setTimeout(() => handlePreviewDoc(doc.id), 100); }} className={`px-3 py-1.5 rounded-lg border text-sm font-bold transition ${fundSources[src] ? 'bg-blue-100 border-blue-500 text-blue-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
+                                                                                                    <button key={src} onClick={() => toggleFundSource(src)} className={`px-3 py-1.5 rounded-lg border text-sm font-bold transition ${fundSources[src] ? 'bg-blue-100 border-blue-500 text-blue-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
                                                                                                         {fundSources[src] && <i className="fas fa-check mr-1 text-xs"></i>}{src}
                                                                                                     </button>
                                                                                                 ))}
-                                                                                                <button onClick={() => { toggleFundSource('其他'); setTimeout(() => handlePreviewDoc(doc.id), 100); }} className={`px-3 py-1.5 rounded-lg border text-sm font-bold transition ${fundSources['其他'] ? 'bg-blue-100 border-blue-500 text-blue-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
+                                                                                                <button onClick={() => toggleFundSource('其他')} className={`px-3 py-1.5 rounded-lg border text-sm font-bold transition ${fundSources['其他'] ? 'bg-blue-100 border-blue-500 text-blue-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
                                                                                                     {fundSources['其他'] && <i className="fas fa-check mr-1 text-xs"></i>}其他
                                                                                                 </button>
                                                                                             </div>
@@ -1735,8 +1738,8 @@
 
                         {/* Tab 4: Shareholder Meeting Docs */}
                         {activeTab === 'meeting_docs' && (
-                            <div className="p-8 fade-in">
-                                <h2 className="text-2xl font-bold mb-6 text-slate-700 border-l-4 border-blue-600 pl-4">股東會文件</h2>
+                            <div className="p-4 sm:p-8 fade-in">
+                                <h2 className="text-xl sm:text-2xl font-bold mb-6 text-slate-700 border-l-4 border-blue-600 pl-4">股東會文件</h2>
 
                                 {getTabStatus('meeting_docs') === 'construction' ? (
                                     <div className="flex flex-col items-center justify-center py-20">
@@ -1975,7 +1978,7 @@
                                                             <iframe
                                                                 src={`https://drive.google.com/file/d/${selectedDoc.driveFileId}/preview`}
                                                                 className="w-full border-0"
-                                                                style={{ height: '600px' }}
+                                                                style={{ height: 'min(600px, 80vh)' }}
                                                                 allow="autoplay"
                                                                 title={selectedDoc.title}
                                                             ></iframe>
