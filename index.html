@@ -345,7 +345,7 @@
             const [name, setName] = useState(isDevMode ? (devType === 'legal' ? '測試法人公司' : '測試股東') : '');
             const [shareholderId, setShareholderId] = useState(isDevMode ? (devType === 'legal' ? '02' : '01') : '');
             const [shareholderInfo, setShareholderInfo] = useState({
-                idNumber: '', birthDate: '', nationality: '', address: '', phone: '', representative: '', docOffsetConfirmed: false
+                idNumber: '', birthDate: '', nationality: '', address: '', phone: '', representative: '', docOffsetConfirmed: false, docStatuses: {}
             });
 
             // 驗證相關
@@ -386,6 +386,9 @@
             // 產生文件結果
             const [docGenResults, setDocGenResults] = useState({}); // { doc_invest: { success, key, message }, ... }
             const [previewModalDocId, setPreviewModalDocId] = useState(null); // 手機版文件預覽 modal
+
+            // ★★★ D3: 多張圖片合併上傳 ★★★
+            const [pendingImages, setPendingImages] = useState({}); // { doc_id: [{ file, preview }] }
 
             // ★★★ B1: iframe 預覽 HTML 快取 ★★★
             const [previewHtmlMap, setPreviewHtmlMap] = useState({}); // { doc_id: htmlString }
@@ -465,7 +468,8 @@
                                 address: data.address || '',
                                 phone: data.phone || '',
                                 representative: data.representative || '',
-                                docOffsetConfirmed: data.docOffsetConfirmed === 'V'
+                                docOffsetConfirmed: data.docOffsetConfirmed === 'V',
+                                docStatuses: data.docStatuses || {}
                             });
                             if (data.shares) {
                                 if (typeof data.shares === 'object') {
@@ -694,6 +698,7 @@
                     alert('請先勾選至少一項出資金額來源！');
                     return;
                 }
+                if (shareholderInfo.docStatuses[targetDocId] && !confirm('此文件已簽核過，確定要重新產生嗎？')) return;
                 setIsProcessing(true);
                 try {
                     // 1. 呼叫 generate_doc 產 PDF 並存到 R2
@@ -748,55 +753,119 @@
             };
 
             // ★★★ 法人上傳已用印文件 → R2（帶 _signed 後綴）★★★
+            const uploadSignedFile = async (docId, base64, ext) => {
+                const now = new Date();
+                const ts = now.getFullYear().toString()
+                    + String(now.getMonth() + 1).padStart(2, '0')
+                    + String(now.getDate()).padStart(2, '0') + '_'
+                    + String(now.getHours()).padStart(2, '0')
+                    + String(now.getMinutes()).padStart(2, '0')
+                    + String(now.getSeconds()).padStart(2, '0');
+                const safeKey = `${shareholderId}_${docId}_${ts}_signed${ext}`;
+                const workerUrl = 'https://n8n-dbcapital-tool.chieh1025.workers.dev/';
+                const res = await fetch(workerUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        type: 'upload_doc',
+                        uploadSecret: 'dbcapital-upload-2025',
+                        shareholderId,
+                        docId,
+                        filename: safeKey,
+                        file: base64
+                    })
+                });
+                return await res.json();
+            };
+
             const handleFileUpload = async (e, docId) => {
-                const file = e.target.files[0];
-                if (!file || !shareholderId) { alert("請先選擇股東身分！"); return; }
-                setIsProcessing(true);
-                try {
-                    const reader = new FileReader();
-                    const base64 = await new Promise((resolve, reject) => {
+                const files = Array.from(e.target.files);
+                if (!files.length || !shareholderId) { alert("請先選擇股東身分！"); return; }
+                if (shareholderInfo.docStatuses[docId] && !confirm('此文件已上傳過，確定要重新上傳嗎？')) { e.target.value = ''; return; }
+
+                // 單一 PDF → 直接上傳
+                if (files.length === 1 && files[0].name.endsWith('.pdf')) {
+                    setIsProcessing(true);
+                    try {
+                        const base64 = await new Promise((resolve, reject) => {
+                            const reader = new FileReader();
+                            reader.onloadend = () => resolve(reader.result);
+                            reader.onerror = reject;
+                            reader.readAsDataURL(files[0]);
+                        });
+                        const data = await uploadSignedFile(docId, base64, '.pdf');
+                        if (data.success) {
+                            setDocGenResults(prev => ({ ...prev, [docId + '_signed']: { success: true, key: data.key } }));
+                            alert('簽核版上傳成功！');
+                        } else {
+                            alert('上傳失敗：' + (data.message || '未知錯誤'));
+                        }
+                    } catch (err) {
+                        console.error('Upload failed:', err);
+                        alert('上傳失敗：' + err.message);
+                    }
+                    setIsProcessing(false);
+                    e.target.value = '';
+                    return;
+                }
+
+                // 圖片 → 暫存到 pendingImages，等合併上傳
+                const newImages = [];
+                for (const file of files) {
+                    const preview = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
                         reader.onloadend = () => resolve(reader.result);
                         reader.onerror = reject;
                         reader.readAsDataURL(file);
                     });
+                    newImages.push({ file, preview });
+                }
+                setPendingImages(prev => ({
+                    ...prev,
+                    [docId]: [...(prev[docId] || []), ...newImages]
+                }));
+                e.target.value = '';
+            };
 
-                    // 產生 _signed 檔名
-                    const now = new Date();
-                    const ts = now.getFullYear().toString()
-                        + String(now.getMonth() + 1).padStart(2, '0')
-                        + String(now.getDate()).padStart(2, '0') + '_'
-                        + String(now.getHours()).padStart(2, '0')
-                        + String(now.getMinutes()).padStart(2, '0')
-                        + String(now.getSeconds()).padStart(2, '0');
-                    const ext = file.name.endsWith('.pdf') ? '.pdf' : '.jpg';
-                    const safeKey = `${shareholderId}_${docId}_${ts}_signed${ext}`;
-
-                    const workerUrl = 'https://n8n-dbcapital-tool.chieh1025.workers.dev/';
-                    const res = await fetch(workerUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            type: 'upload_doc',
-                            uploadSecret: 'dbcapital-upload-2025',
-                            shareholderId,
-                            docId,
-                            filename: safeKey,
-                            file: base64
-                        })
-                    });
-                    const data = await res.json();
+            // ★★★ 多張圖片合併為 PDF 並上傳 ★★★
+            const handleMergeUpload = async (docId) => {
+                const images = pendingImages[docId];
+                if (!images || !images.length) return;
+                setIsProcessing(true);
+                try {
+                    const { jsPDF } = window.jspdf;
+                    const pdf = new jsPDF();
+                    for (let i = 0; i < images.length; i++) {
+                        if (i > 0) pdf.addPage();
+                        const img = new Image();
+                        await new Promise((resolve, reject) => {
+                            img.onload = resolve;
+                            img.onerror = reject;
+                            img.src = images[i].preview;
+                        });
+                        const pageW = pdf.internal.pageSize.getWidth();
+                        const pageH = pdf.internal.pageSize.getHeight();
+                        const ratio = Math.min(pageW / img.width, pageH / img.height);
+                        const w = img.width * ratio;
+                        const h = img.height * ratio;
+                        const x = (pageW - w) / 2;
+                        const y = (pageH - h) / 2;
+                        pdf.addImage(images[i].preview, 'JPEG', x, y, w, h);
+                    }
+                    const pdfBase64 = 'data:application/pdf;base64,' + pdf.output('datauristring').split(',')[1];
+                    const data = await uploadSignedFile(docId, pdfBase64, '.pdf');
                     if (data.success) {
                         setDocGenResults(prev => ({ ...prev, [docId + '_signed']: { success: true, key: data.key } }));
-                        alert('簽核版上傳成功！');
+                        setPendingImages(prev => { const n = { ...prev }; delete n[docId]; return n; });
+                        alert('已合併 ' + images.length + ' 張圖片為 PDF 並上傳成功！');
                     } else {
                         alert('上傳失敗：' + (data.message || '未知錯誤'));
                     }
                 } catch (err) {
-                    console.error('Upload failed:', err);
-                    alert('上傳失敗：' + err.message);
+                    console.error('Merge upload failed:', err);
+                    alert('合併上傳失敗：' + err.message);
                 }
                 setIsProcessing(false);
-                e.target.value = '';
             };
 
             // ★★★ Feature: Auto-Save Subscription Data ★★★
@@ -1422,7 +1491,14 @@
                                                                                 <p className="text-xs text-slate-500">{doc.note}</p>
                                                                             </div>
                                                                         </div>
-                                                                        <i className={`fas fa-chevron-down transition-transform ${isExpanded ? 'rotate-180 text-blue-600' : 'text-slate-300'}`}></i>
+                                                                        <div className="flex items-center gap-3">
+                                                                            {shareholderInfo.docStatuses[doc.id] && (
+                                                                                <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-bold whitespace-nowrap">
+                                                                                    <i className="fas fa-check-circle mr-1"></i>{shareholderInfo.docStatuses[doc.id]}
+                                                                                </span>
+                                                                            )}
+                                                                            <i className={`fas fa-chevron-down transition-transform ${isExpanded ? 'rotate-180 text-blue-600' : 'text-slate-300'}`}></i>
+                                                                        </div>
                                                                     </div>
 
                                                                     <div className={`accordion-content ${isExpanded ? 'expanded' : ''} bg-slate-50`}>
@@ -1498,6 +1574,7 @@
                                                                                                         <SignatureCanvas onSave={setSignatureImg} onClear={() => setSignatureImg(null)} />
                                                                                                         <button onClick={async () => {
                                                                                                             if (isAmlDoc && !hasFundSourcesSelected()) { alert('請先勾選至少一項出資金額來源！'); return; }
+                                                                                                            if (shareholderInfo.docStatuses[doc.id] && !confirm('此文件已簽核過，確定要重新送出嗎？')) return;
                                                                                                             const data = await handleGenerateDoc(doc.id, { signatureImage: signatureImg, isSigned: true });
                                                                                                             if (data) alert('簽核版已產生並儲存！');
                                                                                                         }} disabled={!signatureImg || isProcessing} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md disabled:opacity-50 transition">
@@ -1519,9 +1596,26 @@
                                                                                                             <button onClick={() => document.getElementById(`camera-upload-${doc.id}`).click()} className="w-full border border-green-300 text-green-700 py-3 rounded-lg font-bold hover:bg-green-50 transition flex items-center justify-center gap-2">
                                                                                                                 <i className="fas fa-camera"></i><span>拍照上傳</span>
                                                                                                             </button>
-                                                                                                            <input id={`file-upload-${doc.id}`} type="file" accept="image/*,application/pdf" onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
+                                                                                                            <input id={`file-upload-${doc.id}`} type="file" accept="image/*,application/pdf" multiple onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
                                                                                                             <input id={`camera-upload-${doc.id}`} type="file" accept="image/*" capture="environment" onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
-                                                                                                            <p className="text-xs text-slate-400 text-center">支援 PDF、JPG、PNG 格式</p>
+                                                                                                            <p className="text-xs text-slate-400 text-center">支援 PDF、JPG、PNG，可選多張圖片合併</p>
+                                                                                                            {pendingImages[doc.id] && pendingImages[doc.id].length > 0 && (
+                                                                                                                <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                                                                                                    <div className="flex items-center justify-between mb-2">
+                                                                                                                        <span className="text-sm font-bold text-blue-700"><i className="fas fa-images mr-1"></i>已選 {pendingImages[doc.id].length} 張圖片</span>
+                                                                                                                        <button onClick={() => setPendingImages(prev => { const n = { ...prev }; delete n[doc.id]; return n; })} className="text-xs text-red-500 hover:text-red-700"><i className="fas fa-trash mr-1"></i>清除</button>
+                                                                                                                    </div>
+                                                                                                                    <div className="flex gap-2 overflow-x-auto pb-2">
+                                                                                                                        {pendingImages[doc.id].map((img, idx) => (
+                                                                                                                            <img key={idx} src={img.preview} className="w-16 h-20 object-cover rounded border border-blue-300 flex-shrink-0" />
+                                                                                                                        ))}
+                                                                                                                    </div>
+                                                                                                                    <button onClick={() => document.getElementById(`file-upload-${doc.id}`).click()} className="w-full mt-1 text-xs text-blue-600 hover:text-blue-800 py-1"><i className="fas fa-plus mr-1"></i>繼續加圖</button>
+                                                                                                                    <button onClick={() => handleMergeUpload(doc.id)} disabled={isProcessing} className="w-full mt-2 bg-blue-600 text-white py-2.5 rounded-lg font-bold hover:bg-blue-700 disabled:opacity-50 transition flex items-center justify-center gap-2">
+                                                                                                                        {isProcessing ? <i className="fas fa-spinner fa-spin"></i> : <><i className="fas fa-file-pdf mr-1"></i>合併為 PDF 並上傳</>}
+                                                                                                                    </button>
+                                                                                                                </div>
+                                                                                                            )}
                                                                                                         </div>
                                                                                                     </div>
                                                                                                 )}
@@ -1546,9 +1640,26 @@
                                                                                                 <button onClick={() => document.getElementById(`camera-upload-${doc.id}`).click()} className="w-full border border-green-300 text-green-700 py-3 rounded-lg font-bold hover:bg-green-50 transition flex items-center justify-center gap-2">
                                                                                                     <i className="fas fa-camera"></i><span>拍照上傳</span>
                                                                                                 </button>
-                                                                                                <input id={`file-upload-${doc.id}`} type="file" accept="image/*,application/pdf" onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
+                                                                                                <input id={`file-upload-${doc.id}`} type="file" accept="image/*,application/pdf" multiple onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
                                                                                                 <input id={`camera-upload-${doc.id}`} type="file" accept="image/*" capture="environment" onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
-                                                                                                <p className="text-xs text-slate-400 text-center">支援 PDF、JPG、PNG 格式</p>
+                                                                                                <p className="text-xs text-slate-400 text-center">支援 PDF、JPG、PNG，可選多張圖片合併</p>
+                                                                                                {pendingImages[doc.id] && pendingImages[doc.id].length > 0 && (
+                                                                                                    <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                                                                                        <div className="flex items-center justify-between mb-2">
+                                                                                                            <span className="text-sm font-bold text-blue-700"><i className="fas fa-images mr-1"></i>已選 {pendingImages[doc.id].length} 張圖片</span>
+                                                                                                            <button onClick={() => setPendingImages(prev => { const n = { ...prev }; delete n[doc.id]; return n; })} className="text-xs text-red-500 hover:text-red-700"><i className="fas fa-trash mr-1"></i>清除</button>
+                                                                                                        </div>
+                                                                                                        <div className="flex gap-2 overflow-x-auto pb-2">
+                                                                                                            {pendingImages[doc.id].map((img, idx) => (
+                                                                                                                <img key={idx} src={img.preview} className="w-16 h-20 object-cover rounded border border-blue-300 flex-shrink-0" />
+                                                                                                            ))}
+                                                                                                        </div>
+                                                                                                        <button onClick={() => document.getElementById(`file-upload-${doc.id}`).click()} className="w-full mt-1 text-xs text-blue-600 hover:text-blue-800 py-1"><i className="fas fa-plus mr-1"></i>繼續加圖</button>
+                                                                                                        <button onClick={() => handleMergeUpload(doc.id)} disabled={isProcessing} className="w-full mt-2 bg-blue-600 text-white py-2.5 rounded-lg font-bold hover:bg-blue-700 disabled:opacity-50 transition flex items-center justify-center gap-2">
+                                                                                                            {isProcessing ? <i className="fas fa-spinner fa-spin"></i> : <><i className="fas fa-file-pdf mr-1"></i>合併為 PDF 並上傳</>}
+                                                                                                        </button>
+                                                                                                    </div>
+                                                                                                )}
                                                                                             </div>
                                                                                         </div>
                                                                                     )}
