@@ -12,6 +12,7 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
     <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 
     <style>
         /* 列印專用樣式表 */
@@ -122,6 +123,9 @@
 
             // ★★★ n8n Webhook URL (使用 Cloudflare Worker) ★★★
             n8nApiUrl: 'https://n8n-dbcapital-tool.chieh1025.workers.dev/',
+
+            // ★★★ LIFF ID（LINE Login 自動登入）★★★
+            liffId: '2009219090-Nthxai04',
 
             forceFullOffset: true,
 
@@ -301,6 +305,86 @@
                 loadConfig();
             }, []);
 
+            // ★★★ LIFF 初始化 ★★★
+            useEffect(() => {
+                const liffId = config.liffId;
+                if (!liffId || typeof liff === 'undefined') return;
+
+                const initLiff = async () => {
+                    try {
+                        await liff.init({ liffId });
+                        setIsLiffReady(true);
+
+                        if (liff.isLoggedIn()) {
+                            setIsLiffLogin(true);
+                            setIsLineAutoLogging(true);
+
+                            // 取得 LIFF access token → 送 Worker line_verify
+                            const accessToken = liff.getAccessToken();
+                            if (accessToken) {
+                                try {
+                                    const res = await fetch(config.n8nApiUrl, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ type: 'line_verify', accessToken }),
+                                    });
+                                    const data = await res.json();
+
+                                    if (data.success && data.autoLogin) {
+                                        // 已綁定 → 自動登入
+                                        setLineUserId(data.lineUserId || '');
+                                        setLineBindStatus('bound');
+                                        setIsVerified(true);
+                                        setName(data.name);
+                                        setShareholderId(data.shareholderId || '');
+                                        setShareholderInfo({
+                                            idNumber: data.idNumber || '',
+                                            birthDate: data.birthDate || '',
+                                            nationality: data.nationality || '',
+                                            address: data.address || '',
+                                            phone: data.phone || '',
+                                            representative: data.representative || '',
+                                            docOffsetConfirmed: data.docOffsetConfirmed === 'V',
+                                            docStatuses: data.docStatuses || {},
+                                            docFiles: data.docFiles || {}
+                                        });
+                                        if (data.shares) {
+                                            if (typeof data.shares === 'object') {
+                                                setSharesMap(prev => ({ ...prev, ...data.shares }));
+                                            } else {
+                                                const firstType = config.shareTypes[0].id;
+                                                setSharesMap(prev => ({ ...prev, [firstType]: data.shares }));
+                                            }
+                                        }
+                                        if (data.willParticipate === '是') {
+                                            setWillingToOffset(true);
+                                            setAdditionalShares((data.subscriptionShares || 0).toString());
+                                            setIsSubscriptionConfirmed(true);
+                                        } else if (data.willParticipate === '否') {
+                                            setWillingToOffset(false);
+                                            setIsSubscriptionConfirmed(true);
+                                        }
+                                        const localTarget = config.shareholderOptions.find(o => o.id === data.shareholderId);
+                                        if (data.type) setType(data.type);
+                                        else if (localTarget) setType(localTarget.type || 'natural');
+                                    } else if (data.success && data.needBind) {
+                                        // 未綁定 → 顯示驗證碼輸入
+                                        setLineUserId(data.lineUserId || '');
+                                        setLineBindStatus('needBind');
+                                    }
+                                } catch (e) {
+                                    console.error('LINE auto-login error:', e);
+                                }
+                            }
+                            setIsLineAutoLogging(false);
+                        }
+                    } catch (e) {
+                        console.error('LIFF init error:', e);
+                    }
+                };
+                initLiff();
+            }, [config.liffId]);
+
             // ★★★ 輔助：判斷功能是否已截止 / 尚未開放 ★★★
             const isExpired = (deadline) => {
                 if (!deadline) return false;
@@ -391,6 +475,13 @@
             const [isSubscriptionConfirmed, setIsSubscriptionConfirmed] = useState(false);
             const [viewingDoc, setViewingDoc] = useState(null); // null | doc id
 
+            // ★★★ LIFF / LINE 相關狀態 ★★★
+            const [isLiffReady, setIsLiffReady] = useState(false);
+            const [isLiffLogin, setIsLiffLogin] = useState(false);
+            const [lineUserId, setLineUserId] = useState('');
+            const [isLineAutoLogging, setIsLineAutoLogging] = useState(false);
+            const [lineBindStatus, setLineBindStatus] = useState(''); // '' | 'bound' | 'needBind'
+
             // --- Handlers ---
             const handleNumChange = (setter) => (e) => {
                 const raw = e.target.value.replace(/,/g, '');
@@ -432,7 +523,28 @@
                 setViewingDoc(null);
                 setIsSubscriptionConfirmed(false);
                 setActiveTab('identity');
+                setLineBindStatus('');
                 sessionStorage.removeItem('dbcapital_session');
+            };
+
+            // ★★★ LINE 解除綁定 ★★★
+            const handleLineUnbind = async () => {
+                if (!lineUserId) return;
+                if (!confirm('確定要解除 LINE 帳號綁定嗎？\n解除後需重新輸入驗證碼登入。')) return;
+                try {
+                    const res = await fetch(config.n8nApiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ type: 'line_unbind_via_web', lineUserId }),
+                    });
+                    // 不管成功與否，都重置狀態
+                    setLineBindStatus('');
+                    setLineUserId('');
+                    handleLogout();
+                    alert('已解除 LINE 綁定。');
+                } catch (e) {
+                    alert('解除綁定失敗: ' + e.message);
+                }
             };
 
             // ★★★ 30 分鐘無操作自動登出 ★★★
@@ -473,7 +585,7 @@
                         const response = await fetch(config.n8nApiUrl, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ type: 'verify', shareholderId: shareholderId, code: inputVerifyCode })
+                            body: JSON.stringify({ type: 'verify', shareholderId: shareholderId, code: inputVerifyCode, ...(lineUserId ? { lineUserId } : {}) })
                         });
 
                         const data = await response.json();
@@ -515,7 +627,13 @@
                                 setIsSubscriptionConfirmed(true);
                             }
 
-                            alert(`驗證成功！歡迎 ${data.name} 股東。`);
+                            // ★ LINE 綁定成功提示
+                            if (lineUserId) {
+                                setLineBindStatus('bound');
+                                alert(`驗證成功！歡迎 ${data.name} 股東。\nLINE 帳號已綁定，下次可直接從 LINE 一鍵登入。`);
+                            } else {
+                                alert(`驗證成功！歡迎 ${data.name} 股東。`);
+                            }
 
                             // ★★★ Fix: Ensure type is set correctly based on local config or backend response ★★★
                             const localTarget = config.shareholderOptions.find(o => o.id === shareholderId);
@@ -1189,8 +1307,26 @@
                             <div className="p-4 sm:p-8 md:p-12 fade-in">
                                 <h2 className="text-2xl font-bold mb-6 text-slate-700 border-l-4 border-blue-600 pl-4">股東身份驗證</h2>
                                 <div className="max-w-md mx-auto space-y-8 py-8">
-                                    {!isVerified ? (
+                                    {/* LINE 自動登入中 */}
+                                    {isLineAutoLogging && (
+                                        <div className="bg-green-50 border border-green-200 p-8 rounded-xl text-center fade-in">
+                                            <div className="w-20 h-20 bg-green-100 text-green-500 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">
+                                                <i className="fas fa-spinner fa-spin"></i>
+                                            </div>
+                                            <h3 className="text-xl font-bold text-green-700 mb-2">LINE 自動登入中...</h3>
+                                            <p className="text-green-600 text-sm">正在驗證您的 LINE 帳號</p>
+                                        </div>
+                                    )}
+                                    {!isLineAutoLogging && !isVerified ? (
                                         <div className="space-y-6 bg-slate-50 p-8 rounded-xl border border-slate-200 shadow-sm">
+                                            {/* LINE 綁定提示 */}
+                                            {lineBindStatus === 'needBind' && (
+                                                <div className="bg-green-50 border border-green-200 p-4 rounded-lg text-sm text-green-700">
+                                                    <i className="fab fa-line mr-2" style={{color:'#06C755'}}></i>
+                                                    已偵測到 LINE 帳號，請選擇戶號並輸入驗證碼完成綁定。<br/>
+                                                    綁定後下次可直接從 LINE 一鍵登入。
+                                                </div>
+                                            )}
                                             <div>
                                                 <label className="block text-sm font-bold text-slate-600 mb-2">選擇股東戶號</label>
                                                 {isConfigLoading ? (
@@ -1229,7 +1365,16 @@
                                                     {type === 'legal' ? '法人股東' : '自然人股東'}
                                                 </span>
                                             </div>
-                                            <p className="text-green-600 mb-6">股東戶號: {shareholderId} | 驗證成功</p>
+                                            <p className="text-green-600 mb-2">股東戶號: {shareholderId} | 驗證成功</p>
+                                            {lineBindStatus === 'bound' && (
+                                                <div className="flex items-center justify-center gap-2 mb-4">
+                                                    <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-bold rounded-full bg-green-100 text-green-700">
+                                                        <i className="fab fa-line" style={{color:'#06C755'}}></i> LINE 已綁定
+                                                    </span>
+                                                    <button onClick={handleLineUnbind} className="text-xs text-slate-400 hover:text-red-500 underline">解除綁定</button>
+                                                </div>
+                                            )}
+                                            {!lineBindStatus && <div className="mb-4"></div>}
 
                                             <div className="grid grid-cols-2 gap-4 text-left bg-white p-4 rounded-lg border border-green-100 mb-6">
                                                 {config.shareTypes.map(t => (
