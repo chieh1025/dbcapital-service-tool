@@ -103,29 +103,7 @@
             /* 防止手機滑動頁面 */
         }
 
-        /* A4 fix: Ensure table borders render correctly for html2canvas PDF generation */
-        [id^="doc-preview-"] table,
-        [id^="doc-preview-"] th,
-        [id^="doc-preview-"] td {
-            border: 1px solid #334155 !important;
-            border-collapse: collapse !important;
-        }
-
-        [id^="doc-preview-"] .border,
-        [id^="doc-preview-"] .border-b,
-        [id^="doc-preview-"] .border-t,
-        [id^="doc-preview-"] .border-l,
-        [id^="doc-preview-"] .border-r {
-            border-style: solid !important;
-        }
-
-        [id^="doc-preview-"] .border-black {
-            border-color: #000 !important;
-        }
-
-        [id^="doc-preview-"] .border-slate-300 {
-            border-color: #cbd5e1 !important;
-        }
+        /* (已移除前端 DocumentPreview，改用 n8n HTML iframe 預覽) */
     </style>
 </head>
 
@@ -275,618 +253,6 @@
             );
         }
 
-        // ==========================================
-        // ★★★ 文件渲染元件 ★★★
-        // ==========================================
-        function DocumentPreview({ docId, data, signatureImg, config, fundSources, onToggleFundSource }) {
-            const now = new Date();
-            const deadline = new Date(2026, 2, 20); // 115年3月20日
-            const date = now > deadline ? deadline : now;
-            const rocYear = date.getFullYear() - 1911;
-            const rocMonth = date.getMonth() + 1;
-            const rocDay = date.getDate();
-            const rocDateStr = `中華民國 ${rocYear} 年 ${rocMonth} 月 ${rocDay} 日`;
-
-            const sharesDetail = config.shareTypes.map(type => {
-                const count = data.sharesMap?.[type.id] || 0;
-                return count > 0 ? `${type.name} ${formatInput(count)} 股` : null;
-            }).filter(Boolean).join('、');
-
-            const isDigitalSignSupported = docId !== 'doc_offset'; // offset is paper only
-
-            return (
-                <div id={`doc-preview-${docId}`} className="bg-white p-10 border border-slate-300 shadow-sm mx-auto text-slate-900 leading-relaxed relative" style={{ width: '100%', maxWidth: '800px', minHeight: '800px' }}>
-                    <div className="space-y-6 text-base">
-
-                        {/* --- 1. 債權抵繳 (Offset) --- */}
-                        {docId === 'doc_offset' && (
-                            <>
-                                <div className="text-center mb-8 pt-8">
-                                    <h4 className="text-2xl font-bold font-serif tracking-widest mb-1">達飆資本股份有限公司</h4>
-                                    <h4 className="text-xl font-bold font-serif tracking-wide mb-2">債權抵繳股款明細表</h4>
-                                    <p className="text-lg font-serif">中華民國 115 年 3 月 8 日</p>
-                                </div>
-
-                                <div className="w-full text-right mb-1 text-sm font-serif">單位：新台幣元</div>
-                                <table className="w-full border-collapse border border-slate-900 text-center mb-8 font-serif bg-white table-fixed">
-                                    <colgroup>
-                                        <col style={{width: '10%'}} />
-                                        <col style={{width: '12%'}} />
-                                        <col style={{width: '12%'}} />
-                                        <col style={{width: '9%'}} />
-                                        <col style={{width: '14%'}} />
-                                        <col style={{width: '17%'}} />
-                                        <col style={{width: '13%'}} />
-                                        <col style={{width: '13%'}} />
-                                    </colgroup>
-                                    <thead>
-                                        <tr>
-                                            <th className="border border-slate-900 p-2 align-middle bg-white text-black font-bold" rowSpan="2">帳載科目</th>
-                                            <th className="border border-slate-900 p-2 align-middle bg-white text-black font-bold" colSpan="5">債權情形</th>
-                                            <th className="border border-slate-900 p-2 align-middle bg-white text-black font-bold" colSpan="2">抵繳情形</th>
-                                        </tr>
-                                        <tr>
-                                            <th className="border border-slate-900 p-2 align-middle bg-white text-black font-bold">債權人<br />姓名</th>
-                                            <th className="border border-slate-900 p-2 align-middle bg-white text-black font-bold">債權發生<br />原因</th>
-                                            <th className="border border-slate-900 p-2 align-middle bg-white text-black font-bold">借入<br />日期</th>
-                                            <th className="border border-slate-900 p-2 align-middle bg-white text-black font-bold">債權金額</th>
-                                            <th className="border border-slate-900 p-2 align-middle bg-white text-black font-bold">債權發生之<br />主要證明文件</th>
-                                            <th className="border border-slate-900 p-2 align-middle bg-white text-black font-bold">抵繳資本</th>
-                                            <th className="border border-slate-900 p-2 align-middle bg-white text-black font-bold">抵繳後<br />餘額</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {(() => {
-                                            const grossDiv = data.totalGrossDividend || 0;
-                                            const hi = data.healthInsuranceDeduction || 0;
-                                            const netDiv = grossDiv - hi;
-                                            const offsetAmount = Math.min(netDiv, data.extraCost || 0);
-                                            const remaining = grossDiv - offsetAmount;
-                                            return (
-                                        <tr>
-                                            <td className="border border-slate-900 p-3 font-bold bg-slate-50">應付股利</td>
-                                            <td className="border border-slate-900 p-3">{data.shareholderName}</td>
-                                            <td className="border border-slate-900 p-3 text-sm">114年盈餘分派</td>
-                                            <td className="border border-slate-900 p-3">115.03.08</td>
-                                            <td className="border border-slate-900 p-3 font-mono">{formatInput(grossDiv)}</td>
-                                            <td className="border border-slate-900 p-3 text-sm">盈餘分配表、股東會議事錄</td>
-                                            <td className="border border-slate-900 p-3 font-mono">{formatInput(offsetAmount)}</td>
-                                            <td className="border border-slate-900 p-3 font-mono">{formatInput(remaining)}</td>
-                                        </tr>
-                                            );
-                                        })()}
-                                    </tbody>
-                                </table>
-
-                                <div className="space-y-8 mt-4 font-serif">
-                                    <p className="font-bold text-lg tracking-wide">債權人簽認：以上所列本人等之債權，同意將其抵繳資本，特此簽認。</p>
-
-                                    <div className="mt-12 flex items-baseline">
-                                        <span className="text-xl font-bold mr-4">債權人或股東：</span>
-                                        <span className="text-2xl px-4 min-w-[200px] inline-block text-center font-bold font-kai">{data.shareholderName}</span>
-                                    </div>
-
-                                    <div className="flex justify-between items-end mt-32 pt-10 px-8">
-                                        <div className="text-lg">負責人：</div>
-                                        <div className="text-lg">經理人：</div>
-                                        <div className="text-lg">主辦會計：</div>
-                                    </div>
-                                </div>
-                            </>
-                        )}
-
-                        {/* --- 2. 投資協議書 (Investment Agreement) - Reuses original logic --- */}
-                        {docId === 'doc_invest' && (
-                            <>
-                                <div className="font-serif text-sm leading-relaxed text-justify px-10 py-6">
-                                    <div className="text-center mb-6">
-                                        <h2 className="text-xl font-bold mb-1 tracking-widest">達飆資本股份有限公司</h2>
-                                        <h2 className="text-2xl font-bold tracking-[0.3em]">投資協議書</h2>
-                                    </div>
-
-                                    <div className="space-y-3 mb-4 text-base font-bold">
-                                        <div className="flex items-baseline">
-                                            <div className="w-24 shrink-0">立協議書人：</div>
-                                            <div className="flex-1 border-b border-slate-900 pb-1">達飆資本股份有限公司</div>
-                                            <div className="w-32 text-right text-red-600 shrink-0">(以下簡稱甲方)</div>
-                                        </div>
-                                        <div className="flex items-baseline">
-                                            <div className="w-24 shrink-0"></div>
-                                            <div className="flex-1 border-b border-slate-900 pb-1">{data.shareholderName}</div>
-                                            <div className="w-32 text-right text-red-600 shrink-0">(以下簡稱乙方)</div>
-                                        </div>
-                                    </div>
-
-                                    <div className="mb-4 leading-loose">
-                                        甲方為依據公司法規定設立之閉鎖性股份有限公司，主要營業項目為一般投資業。鑑於對甲方所規劃之未來發展願景之認同，同意認購甲方所發行之特別股。<u>甲乙雙方就股份認購事宜，同意約定條款如下：</u>
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        <div>
-                                            <h4 className="font-bold mb-1">一、乙方同意認購：</h4>
-                                            <ol className="list-decimal list-inside pl-4 space-y-0.5">
-                                                <li>甲種特別股 <span className="font-bold underline px-1">0</span> 股；每股單價新台幣 {formatInput(config.subscriptionPrice)} 元。</li>
-                                                <li>乙種特別股 <span className="font-bold underline px-1">{formatInput(data.totalNewShares || 0)}</span> 股；每股單價新台幣 {formatInput(config.subscriptionPrice)} 元。</li>
-                                                <li>上述總投資金額：新台幣 <span className="font-bold underline px-1">{formatMoney(data.totalCost || 0).replace('NT$', '')}</span> 元。</li>
-                                            </ol>
-                                        </div>
-
-                                        <div>
-                                            <h4 className="font-bold mb-1">二、乙方最晚應於 114 年 9 月 19 日下午 3 點 00 分前，將上述股款一次繳清匯款至甲方指定之下列帳戶，相關匯款費用由乙方負擔。</h4>
-                                            <div className="pl-6 font-bold text-xs">
-                                                <div className="flex gap-6 mt-1">
-                                                    <div className="flex-1">
-                                                        <div className="mb-1 text-sm">帳戶一（優先）：</div>
-                                                        <div>銀行：<span className="underline">永豐銀行竹北自強分行(807)</span></div>
-                                                        <div>帳號：<span className="underline">039-018-0007392-3</span></div>
-                                                        <div>戶名：<span className="underline">達飆資本股份有限公司</span></div>
-                                                    </div>
-                                                    <div className="flex-1">
-                                                        <div className="mb-1 text-sm">帳戶二：</div>
-                                                        <div>銀行：<span className="underline">國泰世華銀行六家分行(013)</span></div>
-                                                        <div>帳號：<span className="underline">139-03-005898-2</span></div>
-                                                        <div>戶名：<span className="underline">達飆資本股份有限公司</span></div>
-                                                    </div>
-                                                </div>
-                                                <div className="mt-1 text-xs text-slate-500 font-normal">※ 公司未特別通知時，以帳戶一（永豐）為優先匯款帳戶。</div>
-                                            </div>
-                                        </div>
-
-                                        <div className="leading-loose">
-                                            三、乙方完成前條所定股款繳納事宜後，乙方應提供甲方股本變更登記及資本額簽證所需資料，以協助甲方依相關程序進行變更登記事宜，相關登記費用由甲方負擔之。本次發行股份擬不印發股票，乙方同意於變更登記程序完成後，由甲方提供得表彰乙方持股權利之證明或相關文件。
-                                        </div>
-
-                                        <div className="leading-loose">
-                                            四、乙方認購之甲種、乙種特別股，其權利義務及其他重要發行條件請詳甲方於中華民國一一四年三月十六日訂定之公司章程(詳附件一)。
-                                        </div>
-
-                                        <div className="leading-loose">
-                                            五、乙方未經甲方書面同意，均不得將所知悉甲方之書面資料、商業機密暨其他經標明為機密之文件或資訊（型態包括但不限於文字、圖畫、書面、電子檔案等），以包括但不限於口頭、影印、錄影、錄音、電子檔案、電子郵件或其他任何方式為傳布、揭示或洩露予任何第三人，假若因而造成相關損失，乙方應賠償甲方此等損失。
-                                        </div>
-
-                                        <div className="leading-loose">
-                                            六、甲乙雙方就本協議所生權利義務，未經雙方書面同意，不得移轉讓與第三人。若有未盡事宜由甲乙雙方協商一致后，另行簽訂補充協議。
-                                        </div>
-
-                                        <div className="leading-loose">
-                                            七、本協議之解釋與履行應以中華民國法律為準據法。甲乙雙方若因本協議涉及訴訟時，同意以臺灣臺北地方法院為第一審管轄法院。
-                                        </div>
-
-                                        <div className="leading-loose">
-                                            八、甲乙雙方同意本協議經乙方透過甲方指定之股務系統完成電子簽署上傳遞交後即生效，甲乙雙方各以此電子檔案為憑。
-                                        </div>
-                                    </div>
-
-                                    <div className="mt-4 text-xs text-slate-500">
-                                        附件一：達飆資本股份有限公司章程。
-                                    </div>
-
-                                    {/* ===== 立約人區塊（上下排列） ===== */}
-                                    <div className="mt-10 pt-6">
-                                        <div className="font-bold text-base tracking-[1em] mb-6">立　約　人</div>
-
-                                        {/* 甲方 */}
-                                        <div className="mb-8">
-                                            <div className="space-y-2 font-bold text-sm">
-                                                <div className="flex items-center">
-                                                    <span className="w-20 inline-block">甲　　方：</span>
-                                                    <span>達飆資本股份有限公司</span>
-                                                    <div className="flex items-end gap-2 ml-auto">
-                                                        <div className="w-20 h-20 border-2 border-red-400 rounded flex items-center justify-center text-red-400 text-xs">公司大章</div>
-                                                        <div className="w-14 h-14 border-2 border-red-400 rounded flex items-center justify-center text-red-400 text-xs">負責人章</div>
-                                                    </div>
-                                                </div>
-                                                <div className="flex"><span className="w-20 inline-block">統 一 編 號：</span><span>96625685</span></div>
-                                                <div className="flex"><span className="w-20 inline-block">代 表 人：</span><span>蔡昀達</span></div>
-                                                <div className="flex"><span className="w-20 inline-block">登 記 地 址：</span><span>新竹縣竹北市六家八街 177 號三樓</span></div>
-                                                <div className="flex"><span className="w-20 inline-block">簽 署 日 期：</span><span>{rocDateStr}</span></div>
-                                            </div>
-                                        </div>
-
-                                        {/* 乙方 */}
-                                        <div>
-                                            <div className="space-y-2 font-bold text-sm relative">
-                                                <div className="flex items-center">
-                                                    <span className="w-20 inline-block">乙　　方：</span>
-                                                    <span>{data.shareholderName}</span>
-                                                    {/* 法人：大小章格子 */}
-                                                    {data.representative && (
-                                                        <div className="flex items-end gap-2 ml-auto">
-                                                            <div className="w-20 h-20 border-2 border-red-400 rounded flex items-center justify-center text-red-400 text-xs">公司大章</div>
-                                                            <div className="w-14 h-14 border-2 border-red-400 rounded flex items-center justify-center text-red-400 text-xs">負責人章</div>
-                                                        </div>
-                                                    )}
-                                                    {/* 自然人：簽名區 */}
-                                                    {!data.representative && signatureImg && (
-                                                        <div className="ml-auto pointer-events-none">
-                                                            <img src={signatureImg} alt="Signed" className="h-16 mix-blend-multiply" />
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                <div className="flex"><span className="w-20 inline-block">{data.representative ? '統 一 編 號：' : '身分證字號：'}</span><span>{data.idNumber || '____________'}</span></div>
-                                                <div className="flex"><span className="w-20 inline-block">代 表 人：</span><span>{data.representative || '無'}</span></div>
-                                                <div className="flex"><span className="w-20 inline-block">簽 署 日 期：</span><span>{rocDateStr}</span></div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </>
-                        )}
-
-                        {/* --- 3. 客戶聲明書 (Client Statement) --- */}
-                        {docId === 'doc_client' && (
-                            <div className="font-serif text-base leading-relaxed text-justify px-12 py-8 relative">
-                                <h2 className="text-3xl font-bold text-center mb-8 tracking-widest">客　戶　聲　明　書</h2>
-
-                                <div className="mb-6 leading-loose">
-                                    茲為應 貴所辦理本人<span className="inline-block border border-black w-4 h-4 align-middle mx-1"></span>公司設立<span className="inline-block border border-black w-4 h-4 bg-black align-middle mx-1"></span>資本額簽證業務之需，謹就所知聲明如下：
-                                </div>
-
-                                <div className="space-y-6">
-                                    <div className="flex items-start">
-                                        <div className="w-10 font-bold text-lg">1、</div>
-                                        <div className="flex-1 leading-loose">
-                                            本人配合洗錢防制法之相關規定願提供 貴所因本次所委任案件所需相關文件及證明，並確認所提供之資料為真實無誤，如後續另有所需資料亦允諾配合提供。
-                                        </div>
-                                    </div>
-
-                                    <div className="flex items-start">
-                                        <div className="w-10 font-bold text-lg">2、</div>
-                                        <div className="flex-1 leading-loose">
-                                            <div>本人提供 貴所之紀錄及資料，並聲明確信下列情事：</div>
-
-                                            <div className="mt-4 pl-4 space-y-4">
-                                                <div>
-                                                    1. 本人直接投資及間接投資之公司 (含國內國外) 達 25%之出資額共計 <span className="border-b border-black px-4 font-bold">0</span> 家 (含本次投資)，明細如下：
-                                                    <table className="ml-6 mt-2 text-sm text-slate-400 w-full border-collapse">
-                                                        <thead><tr><td className="w-8"></td><td className="pb-1">名稱</td><td className="pb-1">統一編號</td><td className="pb-1">國別</td></tr></thead>
-                                                        <tbody>
-                                                            {[1,2,3].map(i => (
-                                                                <tr key={i}><td>({i})</td><td className="border-b border-slate-300 px-2">　</td><td className="border-b border-slate-300 px-2">　</td><td className="border-b border-slate-300 px-2"><span className="inline-block border border-slate-400 w-3 h-3 mr-1 align-middle"></span>國內 <span className="inline-block border border-slate-400 w-3 h-3 mr-1 align-middle"></span>國外</td></tr>
-                                                            ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-
-                                                <div>
-                                                    2. 本人本次委任案件
-                                                    <div className="ml-6 mt-2 space-y-1">
-                                                        <div className="flex items-center"><span className="inline-block border border-black w-4 h-4 mr-2 bg-black"></span>無下列情形。</div>
-                                                        <div className="flex items-center"><span className="inline-block border border-black w-4 h-4 mr-2"></span>有下列情形：</div>
-                                                        <div className="ml-8 space-y-1">
-                                                            <div className="flex items-start"><span className="inline-block border border-black w-4 h-4 mr-2 mt-1"></span>2-1 分割、合併等組織調整金額占原總資產金額未達 25%。</div>
-                                                            <div className="flex items-start"><span className="inline-block border border-black w-4 h-4 mr-2 mt-1"></span>2-2 分割、合併占原總資產金額 25%以上或與國外公司等組織合併、分割等組織調整。</div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div>
-                                                    3. 本人本次委任案件
-                                                    <div className="ml-6 mt-2 space-y-1">
-                                                        <div className="flex items-center"><span className="inline-block border border-black w-4 h-4 mr-2"></span>無關資金(本)事項。</div>
-                                                        <div className="flex items-center"><span className="inline-block border border-black w-4 h-4 mr-2 bg-black"></span>有關資本(本)事項：</div>
-                                                        <div className="ml-8 space-y-1">
-                                                            <div className="flex items-center"><span className="inline-block border border-black w-4 h-4 mr-2 bg-black"></span>3-1 資金(本)來源係境內匯至指定銀行帳戶。</div>
-                                                            <div className="flex items-center"><span className="inline-block border border-black w-4 h-4 mr-2"></span>3-2 資金(本)來源係境外匯至指定銀行帳戶。</div>
-                                                            <div className="flex items-center"><span className="inline-block border border-black w-4 h-4 mr-2"></span>3-3 資金(本)來源係現金至指定銀行帳戶。</div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="leading-loose">
-                                                    4. 本人聲明所有資金來源並無洗錢防制法第 3 條所定或疑似之來源及 <span className="inline-block border border-black w-4 h-4 mx-1 bg-black align-middle"></span>未 <span className="inline-block border border-black w-4 h-4 mx-1 align-middle"></span>持有二個國家以上之護照。
-                                                </div>
-
-                                                <div className="leading-loose">
-                                                    5. 本人聲明 <span className="inline-block border border-black w-4 h-4 mx-1 bg-black align-middle"></span>未 <span className="inline-block border border-black w-4 h-4 mx-1 align-middle"></span>有 曾觸犯洗錢防制法第 3 條各款特定犯罪之罪。
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="mt-16 space-y-2">
-                                    <div className="text-lg">此致</div>
-                                    <div className="text-xl font-bold tracking-widest pl-4">創嶼會計師事務所</div>
-                                </div>
-
-                                <div className="mt-16 text-right px-8">
-                                    <div className="inline-block text-left min-w-[300px] space-y-8">
-                                        <div className="flex items-start text-xl font-bold">
-                                            <span className="mr-4 mt-1">立書人簽章：</span>
-                                            <span className="border-b border-black flex-1 text-center font-kai text-2xl relative">
-                                                {data.shareholderName}
-                                                {!data.representative && signatureImg && <img src={signatureImg} className="absolute -top-4 left-1/2 transform -translate-x-1/2 h-16 mix-blend-multiply" alt="Signed" />}
-                                            </span>
-                                            {/* 法人：大小章格子 */}
-                                            {data.representative && (
-                                                <div className="flex items-end gap-2 ml-4">
-                                                    <div className="w-20 h-20 border-2 border-red-400 rounded flex items-center justify-center text-red-400 text-xs">公司大章</div>
-                                                    <div className="w-14 h-14 border-2 border-red-400 rounded flex items-center justify-center text-red-400 text-xs">負責人章</div>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div className="flex items-baseline text-lg font-bold">
-                                            <span className="mr-8">日　　期：</span>
-                                            <span>{rocYear} 年 {rocMonth} 月 {rocDay} 日</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* --- 4/5. 洗錢防制 (AML) --- */}
-                        {/* --- 4. 洗錢防制 (AML) - Natural --- */}
-                        {docId === 'doc_aml_nat' && (
-                            <div className="font-serif text-base leading-relaxed text-justify px-12 py-8 relative">
-                                <h2 className="text-2xl font-bold text-center mb-4 tracking-widest">洗錢防制聲明書－公司增資</h2>
-                                <p className="text-center text-sm mb-8">本聲明書係基於洗錢防制法所做之聲明，不得用於洗錢防制風險評估、查核以外之用途。</p>
-
-                                <div className="space-y-4 font-bold text-lg mb-8">
-                                    <div className="flex justify-between">
-                                        <div className="flex-1 flex">姓　　名：<span className="border-b border-black flex-1 text-center">{data.shareholderName}</span></div>
-                                        <div className="w-8"></div>
-                                        <div className="flex-1 flex">身分證字號：<span className="border-b border-black flex-1 text-center font-mono">{data.idNumber || '____________'}</span></div>
-                                    </div>
-                                    <div className="flex">出生日期：<span className="border-b border-black w-40 text-center">{data.birthDate || '＿＿.＿＿.＿＿'}</span></div>
-                                    <div className="flex justify-between">
-                                        <div className="flex items-center"><span className="mr-2">身　　分：</span><span className="inline-block border w-4 h-4 bg-black mr-1"></span>自然人股東</div>
-                                        <div className="flex items-center"><span className="mr-2">國　　籍：</span><span className="border-b border-black px-4">{data.nationality || '臺灣'}</span></div>
-                                    </div>
-                                    <div className="flex">戶籍地址／登記地址：<span className="border-b border-black flex-1">{data.address || '______________________________'}</span></div>
-                                    <div className="flex">連絡電話：<span className="border-b border-black flex-1">{data.phone || '________________'}</span></div>
-                                    <div className="flex">出資金額：新台幣 <span className="border-b border-black px-4">{formatMoney(data.totalCost || 0).replace('NT$', '')}</span> 元</div>
-                                    <div className="flex items-center flex-wrap">
-                                        <span className="mr-2">出資金額來源：</span>
-                                        {['薪資','營利','借款','受贈','繼承'].map(src => (
-                                            <span key={src} className="mr-4 cursor-pointer select-none" onClick={() => onToggleFundSource && onToggleFundSource(src)}>
-                                                <span className={`inline-block border border-black w-4 h-4 mr-1 align-middle ${fundSources?.[src] ? 'bg-black' : ''}`}></span>{src}
-                                            </span>
-                                        ))}
-                                        <span className="cursor-pointer select-none" onClick={() => onToggleFundSource && onToggleFundSource('其他')}>
-                                            <span className={`inline-block border border-black w-4 h-4 mr-1 align-middle ${fundSources?.['其他'] ? 'bg-black' : ''}`}></span>其他：___________
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div className="mb-8">
-                                    <div className="font-bold underline mb-2">應提供資料：</div>
-                                    <div className="pl-4 font-bold flex items-center">
-                                        自然人股東：<span className="inline-block border w-4 h-4 bg-black mr-2"></span>身分證／健保卡／居留證／護照（擇一）正反面影本
-                                    </div>
-                                </div>
-
-                                <div className="space-y-6">
-                                    <div className="font-bold">聲明段：</div>
-                                    <div className="pl-8 leading-loose text-justify">
-                                        本人聲明上述事項及所檢附文件均完全確實，且絕無洗錢防制法第二條所列情事，如有虛偽或隱匿，願受法律制裁，並願賠償 貴事務所因而遭受之損失。
-                                    </div>
-                                </div>
-
-                                <div className="mt-16 space-y-2">
-                                    <div className="text-lg">此致</div>
-                                    <div className="text-xl font-bold tracking-widest pl-4">創嶼會計師事務所</div>
-                                </div>
-
-                                <div className="mt-12 text-right px-8">
-                                    <div className="inline-block text-left min-w-[300px] space-y-4 font-bold text-xl">
-                                        <div className="flex items-baseline">
-                                            <span className="mr-4">聲明人：</span>
-                                            <span className="border-b border-black flex-1 text-center font-kai relative">
-                                                {data.shareholderName}
-                                                {signatureImg && <img src={signatureImg} className="absolute -top-6 left-1/2 transform -translate-x-1/2 h-20 mix-blend-multiply" alt="Signed" />}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-baseline">
-                                            <span className="mr-4">日　期：</span>
-                                            <span>民國 {rocYear} 年 {rocMonth} 月 {rocDay} 日</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="mt-12 pt-8 border-t border-slate-300 text-xs text-slate-500 leading-relaxed">
-                                    <div className="font-bold mb-1">洗錢防制法第二條：</div>
-                                    <div>本法所稱洗錢，指下列行為：</div>
-                                    <div>一、意圖掩飾或隱匿特定犯罪所得來源，或使他人逃避刑事追訴，而移轉或變更特定犯罪所得。</div>
-                                    <div>二、掩飾或隱匿特定犯罪所得之本質、來源、去向、所在、所有權、處分權或其他權益者。</div>
-                                    <div>三、收受、持有或使用他人之特定犯罪所得。</div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* --- 5. 洗錢防制 (AML) - Legal --- */}
-                        {docId === 'doc_aml_leg' && (
-                            <div className="font-serif text-base leading-relaxed text-justify px-12 py-8 relative">
-                                <h2 className="text-2xl font-bold text-center mb-4 tracking-widest">洗錢防制聲明書－公司增資</h2>
-                                <p className="text-center text-sm mb-8">本聲明書係基於洗錢防制法所做之聲明，不得用於洗錢防制風險評估、查核以外之用途。</p>
-
-                                <div className="space-y-4 font-bold text-lg mb-8">
-                                    <div className="flex justify-between">
-                                        <div className="flex-1 flex">法人名稱：<span className="border-b border-black flex-1 text-center">{data.shareholderName}</span></div>
-                                        <div className="w-8"></div>
-                                        <div className="flex-1 flex">統一編號：<span className="border-b border-black flex-1 text-center font-mono">{data.idNumber || '____________'}</span></div>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <div className="flex items-center"><span className="mr-2">身　　分：</span><span className="inline-block border w-4 h-4 bg-black mr-1"></span>法人股東</div>
-                                        <div className="flex items-center"><span className="mr-2">國　　籍：</span><span className="border-b border-black px-4">{data.nationality || '臺灣'}</span></div>
-                                    </div>
-                                    <div className="flex">戶籍地址／登記地址：<span className="border-b border-black flex-1">{data.address || '______________________________'}</span></div>
-                                    <div className="flex">連絡電話：<span className="border-b border-black flex-1">{data.phone || '________________'}</span></div>
-                                    <div className="flex">出資金額：新台幣 <span className="border-b border-black px-4">{formatMoney(data.totalCost || 0).replace('NT$', '')}</span> 元</div>
-                                    <div className="flex items-center flex-wrap">
-                                        <span className="mr-2">出資金額來源：</span>
-                                        {['資本','薪資','營利','借款','受贈','繼承'].map(src => (
-                                            <span key={src} className="mr-4 cursor-pointer select-none" onClick={() => onToggleFundSource && onToggleFundSource(src)}>
-                                                <span className={`inline-block border border-black w-4 h-4 mr-1 align-middle ${fundSources?.[src] ? 'bg-black' : ''}`}></span>{src}
-                                            </span>
-                                        ))}
-                                        <span className="cursor-pointer select-none" onClick={() => onToggleFundSource && onToggleFundSource('其他')}>
-                                            <span className={`inline-block border border-black w-4 h-4 mr-1 align-middle ${fundSources?.['其他'] ? 'bg-black' : ''}`}></span>其他：___________
-                                        </span>
-                                    </div>
-                                </div>
-
-                                <div className="mb-8">
-                                    <div className="font-bold underline mb-2">應提供資料：</div>
-                                    <div className="pl-4 font-bold flex items-center mb-2">
-                                        法人股東：<span className="inline-block border w-4 h-4 bg-black mr-2"></span>公司設立登記核准文件 <span className="inline-block border w-4 h-4 bg-black ml-4 mr-2"></span>所有權人或實質受益人聲明書
-                                    </div>
-                                </div>
-
-                                <div className="space-y-6">
-                                    <div className="font-bold">聲明段：</div>
-                                    <div className="pl-8 leading-loose text-justify">
-                                        本人聲明上述事項及所檢附文件均完全確實，且絕無洗錢防制法第二條所列情事，如有虛偽或隱匿，願受法律制裁，並願賠償 貴事務所因而遭受之損失。
-                                    </div>
-                                </div>
-
-                                <div className="mt-16 space-y-2">
-                                    <div className="text-lg">此致</div>
-                                    <div className="text-xl font-bold tracking-widest pl-4">創嶼會計師事務所</div>
-                                </div>
-
-                                <div className="mt-8 text-right px-8">
-                                    <div className="inline-block text-left min-w-[320px] space-y-4 font-bold text-lg">
-                                        <div className="flex items-end mb-4">
-                                            <span className="mr-2 pb-1">聲明人：</span>
-                                            <span className="border-b border-black flex-1 text-center font-kai text-xl pb-1">{data.shareholderName}</span>
-                                            {/* 大小章格子 - 下緣切齊公司名稱底線 */}
-                                            <div className="flex items-end gap-2 ml-4">
-                                                <div className="w-20 h-20 border-2 border-red-400 rounded flex items-center justify-center text-red-400 text-xs">公司大章</div>
-                                                <div className="w-14 h-14 border-2 border-red-400 rounded flex items-center justify-center text-red-400 text-xs">負責人章</div>
-                                            </div>
-                                        </div>
-                                        <div className="text-center text-sm mb-4">(若為法人股東，應由其負責人立此聲明書)</div>
-
-                                        <div className="flex items-baseline mb-2">
-                                            <div className="w-24 text-right mr-2">代表人簽署：</div>
-                                            <div className="border-b border-black flex-1 text-center">{data.representative || '____________'}</div>
-                                        </div>
-                                        <div className="flex items-baseline mb-4">
-                                            <div className="w-24 text-right mr-2">代表人職稱：</div>
-                                            <div className="border-b border-black flex-1 text-center font-kai">負責人</div>
-                                        </div>
-                                        <div className="flex items-baseline mb-8">
-                                            <div className="w-24 text-right mr-2">代理人及關係：</div>
-                                            <div className="border-b border-black flex-1"></div>
-                                        </div>
-
-                                        <div className="flex items-baseline justify-end">
-                                            <span className="mr-4">日　期：</span>
-                                            <span>民國　114　年　　　月　　　日</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="mt-8 pt-4 border-t border-slate-300 text-xs text-slate-500 leading-relaxed">
-                                    <div className="font-bold mb-1">洗錢防制法第二條：</div>
-                                    <div>本法所稱洗錢，指下列行為：</div>
-                                    <div>一、意圖掩飾或隱匿特定犯罪所得來源，或使他人逃避刑事追訴，而移轉或變更特定犯罪所得。</div>
-                                    <div>二、掩飾或隱匿特定犯罪所得之本質、來源、去向、所在、所有權、處分權或其他權益者。</div>
-                                    <div>三、收受、持有或使用他人之特定犯罪所得。</div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* --- 6. 實質受益人 (Beneficial Owner) --- */}
-                        {docId === 'doc_beneficial' && (
-                            <div className="font-serif text-base leading-relaxed text-justify px-12 py-8 relative">
-                                <h2 className="text-3xl font-bold text-center mb-2 tracking-widest">所有權人或實質受益人聲明書</h2>
-                                <h3 className="text-xl font-bold text-center mb-8 text-slate-600 italic">(客戶為法人者適用)</h3>
-
-                                <div className="space-y-8">
-                                    <div>
-                                        <h4 className="font-bold text-xl mb-4">一、所有權人或實質受益人茲此聲明：</h4>
-                                        <ol className="list-chinese pl-4 space-y-4 leading-loose">
-                                            <li>本法人委任　貴所為<span className="border-b border-black px-2">資本額簽證</span>之準備或進行交易一案，本法人業已自行查驗依註冊所在地之相關所有權與控制權結構，清楚瞭解所有業務性質，並無「洗錢防制法」第 3 條所稱特定犯罪之情，亦無第 4 條之特定犯罪所得；並業已自行查驗最終直接或間接持有本法人股份或資本超過百分之二十五之自然人屬實質受益人部分，皆已向　貴所揭露。</li>
-                                            <li>本法人對註冊地國人民、法人、團體或其他機構直接或間接持有本法人股份或出資比率之計算及其直接或間接對本法人是否為實質受益人之判斷，確實依照相關認定標準為判斷。</li>
-                                            <li>本法人承諾，於本交易準備或進行中及終止時　貴所得為必要查驗時，本法人願意配合提供背後董事及股東名冊 (至最終實質受益人) 及海外控股架構圖等資料，並同意依　貴所要求，經查驗有違反洗錢防制法相關規定之虞時，願由　貴所將相關資訊提供給法務部調查局申報。本聲明就防制洗錢查驗情形暨所附資料為正確無誤，如有不實，本法人願負一切中華民國之法律責任。</li>
-                                        </ol>
-                                    </div>
-
-                                    <div>
-                                        <h4 className="font-bold text-xl mb-4">二、代理人茲此聲明：</h4>
-                                        <ol className="list-chinese pl-4 space-y-4 leading-loose">
-                                            <li>本代理人對上述所有權人或實質受益人確實明瞭現行法規對防制洗錢相關規定之定義及股權計算、控制力查驗方式及相關罰則規定。並了解「洗錢防制法」第 14 條至第 16 條對代理人相關制裁之規定。</li>
-                                            <li>本交易案準備或進行中及終止時五年內，　貴所有需配合法務部調查局查驗時，本代理人有義務督請所有權人及實質受益人提供背後董事及股東名冊 (至最終受益人) 及海外控股架構圖等資料。</li>
-                                        </ol>
-                                    </div>
-                                </div>
-
-                                <div className="mt-16 space-y-2">
-                                    <div className="text-lg">此致</div>
-                                    <div className="text-xl font-bold tracking-widest pl-4">創嶼會計師事務所</div>
-                                </div>
-
-                                <div className="mt-8 px-8">
-                                    <div className="grid grid-cols-[120px_1fr] gap-4 mb-8">
-                                        <div className="text-right font-bold pt-2">本法人名稱：</div>
-                                        <div className="flex items-start gap-4">
-                                            <div className="flex-1">
-                                                <div className="border-b border-black w-full pb-1 font-bold text-xl mb-1">{data.shareholderName}</div>
-                                                <div className="text-xs text-slate-500">(請書寫國籍及法人名稱)</div>
-                                            </div>
-                                            {/* 大小章格子 */}
-                                            <div className="flex items-end gap-2">
-                                                <div className="w-20 h-20 border-2 border-red-400 rounded flex items-center justify-center text-red-400 text-xs">公司大章</div>
-                                                <div className="w-14 h-14 border-2 border-red-400 rounded flex items-center justify-center text-red-400 text-xs">負責人章</div>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-[120px_1fr] gap-4 mb-4 items-center">
-                                        <div className="text-right font-bold">代表人簽署：</div>
-                                        <div className="border-b border-black w-full text-center font-bold">{data.representative || '____________'}</div>
-                                    </div>
-
-                                    <div className="grid grid-cols-[120px_1fr] gap-4 mb-8 items-center">
-                                        <div className="text-right font-bold">代表人職稱：</div>
-                                        <div className="border-b border-black w-full text-center font-kai">負責人</div>
-                                        <div className="text-xs text-slate-500 col-start-2">(必填)</div>
-                                    </div>
-
-                                    <div className="grid grid-cols-[120px_1fr] gap-4 mb-12 items-center">
-                                        <div className="text-right font-bold">代理人及關係：</div>
-                                        <div className="border-b border-black w-full text-center"></div>
-                                        <div className="text-xs text-slate-500 col-start-2">(簽名或蓋章)</div>
-                                    </div>
-
-                                    <div className="text-right text-lg font-bold">
-                                        日期： 114 年　　　月　　　日
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Signature Block - Hide for Offset Doc and all new Templates as they have custom footers */}
-                        {docId !== 'doc_offset' && docId !== 'doc_invest' && docId !== 'doc_client' && docId !== 'doc_aml_nat' && docId !== 'doc_aml_leg' && docId !== 'doc_beneficial' && (
-                            <div className="mt-12 pt-8">
-                                <div className="flex justify-between items-end">
-                                    <div className="w-1/2">
-                                        <p className="mb-2 font-bold">簽章：</p>
-                                        <div className="h-24 border-b border-slate-400 relative">
-                                            {/* Show signature image if provided (Digital) OR if it's paper mode we just leave blank for printing */}
-                                            {signatureImg && isDigitalSignSupported ?
-                                                <img src={signatureImg} className="h-full absolute bottom-0 left-0" alt="簽名" /> :
-                                                <span className="text-slate-300 text-sm absolute bottom-2 no-print">
-                                                    {isDigitalSignSupported ? '(尚未簽名)' : '(請列印後紙本簽名)'}
-                                                </span>
-                                            }
-                                        </div>
-                                    </div>
-                                    <div className="text-right">
-                                        <p>中華民國 &nbsp;{date.getFullYear() - 1911}&nbsp; 年 &nbsp;{date.getMonth() + 1}&nbsp; 月 &nbsp;{date.getDate()}&nbsp; 日</p>
-                                    </div>
-                                </div>
-                            </div>
-
-                        )}
-                    </div>
-                </div >
-            );
-        }
-
-
 
         function App() {
             // ★★★ 開發模式：?dev=1 自然人 | ?dev=2 法人 ★★★
@@ -979,7 +345,7 @@
             const [name, setName] = useState(isDevMode ? (devType === 'legal' ? '測試法人公司' : '測試股東') : '');
             const [shareholderId, setShareholderId] = useState(isDevMode ? (devType === 'legal' ? '02' : '01') : '');
             const [shareholderInfo, setShareholderInfo] = useState({
-                idNumber: '', birthDate: '', nationality: '', address: '', phone: '', representative: ''
+                idNumber: '', birthDate: '', nationality: '', address: '', phone: '', representative: '', docOffsetConfirmed: false
             });
 
             // 驗證相關
@@ -1005,10 +371,25 @@
             // 出資來源勾選
             const [fundSources, setFundSources] = useState({});
             const toggleFundSource = (key) => setFundSources(prev => ({ ...prev, [key]: !prev[key] }));
+            const hasFundSourcesSelected = () => Object.values(fundSources).some(v => v);
+
+            // A3: 文件日期平移 — 若填寫日超出 config 設定的範圍，平移到最早/最晚日
+            const getClampedDocDate = () => {
+                const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+                const earliest = config.docEarliestDate || '';
+                const latest = config.docLatestDate || '';
+                if (earliest && today < earliest) return earliest;
+                if (latest && today > latest) return latest;
+                return today;
+            };
 
             // 產生文件結果
             const [docGenResults, setDocGenResults] = useState({}); // { doc_invest: { success, key, message }, ... }
             const [previewModalDocId, setPreviewModalDocId] = useState(null); // 手機版文件預覽 modal
+
+            // ★★★ B1: iframe 預覽 HTML 快取 ★★★
+            const [previewHtmlMap, setPreviewHtmlMap] = useState({}); // { doc_id: htmlString }
+            const [previewLoading, setPreviewLoading] = useState({}); // { doc_id: boolean }
 
             // 文件區狀態
             const [selectedDocId, setSelectedDocId] = useState('doc1'); // 對於 CapitalDocs 預設
@@ -1083,7 +464,8 @@
                                 nationality: data.nationality || '',
                                 address: data.address || '',
                                 phone: data.phone || '',
-                                representative: data.representative || ''
+                                representative: data.representative || '',
+                                docOffsetConfirmed: data.docOffsetConfirmed === 'V'
                             });
                             if (data.shares) {
                                 if (typeof data.shares === 'object') {
@@ -1227,6 +609,7 @@
                         totalCost: result?.totalCost || 0,
                         subscriptionPrice: config.subscriptionPrice || 160000,
                         fundSources: fundSources,
+                        docDate: getClampedDocDate(),
                         // 簽名圖（簽核版才帶）
                         ...(options.signatureImage ? { signatureImage: options.signatureImage } : {}),
                         // 標記是否為簽核版
@@ -1258,10 +641,59 @@
                 }
             };
 
+            // ★★★ B1: 預覽用 — 呼叫 Worker (skipPdf) 拿 n8n HTML ★★★
+            const handlePreviewDoc = async (docId) => {
+                if (!shareholderId || !config.n8nApiUrl) return;
+                setPreviewLoading(prev => ({ ...prev, [docId]: true }));
+                try {
+                    const totalHI = result?.dividendResults?.reduce((sum, d) => sum + d.hi, 0) || 0;
+                    const body = {
+                        type: 'generate_doc',
+                        skipPdf: true,
+                        docId,
+                        shareholderId,
+                        shareholderName: name,
+                        idNumber: shareholderInfo.idNumber,
+                        representative: shareholderInfo.representative,
+                        birthDate: shareholderInfo.birthDate,
+                        nationality: shareholderInfo.nationality,
+                        address: shareholderInfo.address,
+                        phone: shareholderInfo.phone,
+                        totalGrossDividend: result?.totalGrossDividend || 0,
+                        healthInsuranceDeduction: totalHI,
+                        extraCost: result?.extraCost || 0,
+                        totalNewShares: result?.totalNewShares || 0,
+                        totalCost: result?.totalCost || 0,
+                        subscriptionPrice: config.subscriptionPrice || 160000,
+                        fundSources: fundSources,
+                        docDate: getClampedDocDate()
+                    };
+                    const res = await fetch(config.n8nApiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+                    const data = await res.json();
+                    if (data.success && data.html) {
+                        setPreviewHtmlMap(prev => ({ ...prev, [docId]: data.html }));
+                    } else {
+                        console.error('Preview failed:', data);
+                    }
+                } catch (e) {
+                    console.error('Preview error:', e);
+                } finally {
+                    setPreviewLoading(prev => ({ ...prev, [docId]: false }));
+                }
+            };
+
             // PDF/Image Handlers
             // ★★★ 改用 Gotenberg 後端產 PDF，不再用 html2canvas ★★★
             const handleGeneratePDF = async (action, targetDocId) => {
                 if (!shareholderId) { alert("請先選擇股東身分！"); return; }
+                if ((targetDocId === 'doc_aml_nat' || targetDocId === 'doc_aml_leg') && !hasFundSourcesSelected()) {
+                    alert('請先勾選至少一項出資金額來源！');
+                    return;
+                }
                 setIsProcessing(true);
                 try {
                     // 1. 呼叫 generate_doc 產 PDF 並存到 R2
@@ -1347,6 +779,7 @@
                             type: 'upload_doc',
                             uploadSecret: 'dbcapital-upload-2025',
                             shareholderId,
+                            docId,
                             filename: safeKey,
                             file: base64
                         })
@@ -1390,11 +823,12 @@
                     const data = await res.json();
                     if (data.success) {
                         setIsSubscriptionConfirmed(true);
+                        const nth = data.submissionNumber ? `（第 ${data.submissionNumber} 次填寫）` : '';
                         if (willingToOffset) {
-                            alert('認購資料已儲存！正在生成文件上傳中...');
+                            alert(`認購資料已儲存${nth}！正在生成文件上傳中...`);
                             setTimeout(() => uploadAllDocuments(), 500);
                         } else {
-                            alert('已記錄您不參與增資，預計將領回股利淨額。');
+                            alert(`已記錄您不參與增資${nth}，預計將領回股利淨額。`);
                         }
                     } else {
                         alert('儲存失敗：' + (data.error || '未知錯誤'));
@@ -1956,6 +1390,7 @@
                                                             const isExpanded = expandedDocId === doc.id;
                                                             const isPaperOnly = doc.type === 'paper_only';
                                                             const isHybrid = doc.type === 'hybrid';
+                                                            const isAmlDoc = doc.id === 'doc_aml_nat' || doc.id === 'doc_aml_leg';
 
                                                             const handleExpand = () => {
                                                                 if (isExpanded) {
@@ -1967,6 +1402,10 @@
                                                                         setSignMethod('online');
                                                                     } else {
                                                                         setSignMethod('paper');
+                                                                    }
+                                                                    // ★ B1: 展開時自動載入預覽
+                                                                    if (!previewHtmlMap[doc.id]) {
+                                                                        handlePreviewDoc(doc.id);
                                                                     }
                                                                 }
                                                             };
@@ -1990,111 +1429,178 @@
                                                                         <div className="p-4 sm:p-6 border-t border-blue-100">
                                                                             {/* ★ 手機版：預覽按鈕 + 全螢幕 Modal */}
                                                                             {isMobile && (
-                                                                                <button onClick={() => setPreviewModalDocId(doc.id)} className="w-full mb-4 border border-blue-300 text-blue-700 py-3 rounded-lg font-bold hover:bg-blue-50 transition flex items-center justify-center gap-2">
+                                                                                <button onClick={() => { if (!previewHtmlMap[doc.id]) handlePreviewDoc(doc.id); setPreviewModalDocId(doc.id); }} className="w-full mb-4 border border-blue-300 text-blue-700 py-3 rounded-lg font-bold hover:bg-blue-50 transition flex items-center justify-center gap-2">
                                                                                     <i className="fas fa-eye"></i><span>預覽文件內容</span>
                                                                                 </button>
                                                                             )}
                                                                             <div className="flex flex-col lg:flex-row gap-4 lg:gap-8">
-                                                                                {/* Document Preview - 桌面版才顯示 inline */}
+                                                                                {/* ★★★ B1: 桌面版 iframe 預覽（取代 DocumentPreview） ★★★ */}
                                                                                 {!isMobile && (
-                                                                                <div className="lg:w-2/3 bg-white p-2 rounded shadow-inner overflow-auto border border-slate-200" style={{ maxHeight: '80vh' }}>
-                                                                                    <div className="scale-75 origin-top-left w-[133%]">
-                                                                                        <DocumentPreview docId={doc.id} data={isSubscriptionConfirmed ? { shareholderId, shareholderName: name, ...shareholderInfo, sharesMap, totalShares: result?.totalShares, totalNewShares: result?.totalNewShares, offsetCost: result?.finalOffsetCost, extraCost: result?.extraCost, totalNetDividend: result?.totalNetDividend, totalGrossDividend: result?.totalGrossDividend, healthInsuranceDeduction: result?.dividendResults?.reduce((sum, d) => sum + d.hi, 0) || 0, remainingDividendCash: result?.remainingDividendCash, totalCost: result?.totalCost } : { shareholderId, shareholderName: name, ...shareholderInfo, sharesMap }} signatureImg={signatureImg} config={config} fundSources={fundSources} onToggleFundSource={toggleFundSource} />
-                                                                                    </div>
+                                                                                <div className="lg:w-2/3 bg-white rounded shadow-inner overflow-hidden border border-slate-200" style={{ minHeight: '500px' }}>
+                                                                                    {previewLoading[doc.id] ? (
+                                                                                        <div className="flex items-center justify-center h-full py-20">
+                                                                                            <i className="fas fa-spinner fa-spin text-3xl text-blue-400 mr-3"></i>
+                                                                                            <span className="text-slate-500">載入預覽中...</span>
+                                                                                        </div>
+                                                                                    ) : previewHtmlMap[doc.id] ? (
+                                                                                        <iframe
+                                                                                            srcDoc={previewHtmlMap[doc.id]}
+                                                                                            className="w-full border-0"
+                                                                                            style={{ height: '80vh' }}
+                                                                                            title={doc.title}
+                                                                                            sandbox="allow-same-origin"
+                                                                                        />
+                                                                                    ) : (
+                                                                                        <div className="flex items-center justify-center h-full py-20">
+                                                                                            <button onClick={() => handlePreviewDoc(doc.id)} className="bg-blue-100 text-blue-700 px-6 py-3 rounded-lg font-bold hover:bg-blue-200 transition">
+                                                                                                <i className="fas fa-eye mr-2"></i>載入預覽
+                                                                                            </button>
+                                                                                        </div>
+                                                                                    )}
                                                                                 </div>
                                                                                 )}
 
                                                                                 {/* Action Panel */}
                                                                                 <div className={`${isMobile ? 'w-full' : 'lg:w-1/3'} space-y-4 sm:space-y-6`}>
-                                                                                    {type === 'natural' && isHybrid && (
-                                                                                        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-                                                                                            <h4 className="font-bold mb-3 text-slate-700 text-sm">簽署方式</h4>
-                                                                                            <div className="flex gap-2">
-                                                                                                <button onClick={() => setSignMethod('online')} className={`flex-1 py-2 rounded-lg border text-sm font-bold transition ${signMethod === 'online' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>數位簽名</button>
-                                                                                                <button onClick={() => setSignMethod('paper')} className={`flex-1 py-2 rounded-lg border text-sm font-bold transition ${signMethod === 'paper' ? 'bg-blue-50 border-blue-500 text-blue-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>紙本/上傳</button>
+                                                                                    {/* ★★★ 出資來源勾選（洗錢防制聲明書才顯示） ★★★ */}
+                                                                                    {isAmlDoc && (
+                                                                                        <div className={`bg-white p-4 rounded-xl shadow-sm border ${hasFundSourcesSelected() ? 'border-slate-200' : 'border-red-400 ring-1 ring-red-300'}`}>
+                                                                                            <h4 className="font-bold mb-3 text-slate-700 text-sm"><i className="fas fa-wallet mr-1"></i>出資金額來源{!hasFundSourcesSelected() && <span className="text-red-500 ml-1">(必選)</span>}</h4>
+                                                                                            <div className="flex flex-wrap gap-2">
+                                                                                                {(type === 'legal' ? ['資本','薪資','營利','借款','受贈','繼承'] : ['薪資','營利','借款','受贈','繼承']).map(src => (
+                                                                                                    <button key={src} onClick={() => { toggleFundSource(src); setTimeout(() => handlePreviewDoc(doc.id), 100); }} className={`px-3 py-1.5 rounded-lg border text-sm font-bold transition ${fundSources[src] ? 'bg-blue-100 border-blue-500 text-blue-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
+                                                                                                        {fundSources[src] && <i className="fas fa-check mr-1 text-xs"></i>}{src}
+                                                                                                    </button>
+                                                                                                ))}
+                                                                                                <button onClick={() => { toggleFundSource('其他'); setTimeout(() => handlePreviewDoc(doc.id), 100); }} className={`px-3 py-1.5 rounded-lg border text-sm font-bold transition ${fundSources['其他'] ? 'bg-blue-100 border-blue-500 text-blue-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
+                                                                                                    {fundSources['其他'] && <i className="fas fa-check mr-1 text-xs"></i>}其他
+                                                                                                </button>
                                                                                             </div>
                                                                                         </div>
                                                                                     )}
 
-                                                                                    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                                                                                        {signMethod === 'online' && !isPaperOnly ? (
-                                                                                            <div className="space-y-4">
-                                                                                                <div>
-                                                                                                    <p className="text-sm text-slate-500 mb-2 font-bold">請在下方簽名：</p>
-                                                                                                    <SignatureCanvas onSave={setSignatureImg} onClear={() => setSignatureImg(null)} />
-                                                                                                </div>
-                                                                                                <button onClick={async () => {
-                                                                                                    const data = await handleGenerateDoc(doc.id, { signatureImage: signatureImg, isSigned: true });
-                                                                                                    if (data) alert('簽核版已產生並儲存！');
-                                                                                                }} disabled={!signatureImg || isProcessing} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md disabled:opacity-50 transition">
-                                                                                                    {isProcessing ? <i className="fas fa-spinner fa-spin"></i> : <><i className="fas fa-paper-plane mr-2"></i>送出簽核</>}
+                                                                                    {/* ★★★ D1: 簽章方式 tab ★★★ */}
+                                                                                    {/* 自然人 hybrid → 顯示兩個 tab */}
+                                                                                    {type === 'natural' && isHybrid && (
+                                                                                        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                                                                            <h4 className="font-bold px-4 pt-4 pb-2 text-slate-700 text-sm">簽章方式</h4>
+                                                                                            <div className="flex border-b border-slate-200">
+                                                                                                <button onClick={() => setSignMethod('online')} className={`flex-1 py-2.5 text-sm font-bold transition border-b-2 ${signMethod === 'online' ? 'border-blue-500 text-blue-700 bg-blue-50/50' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
+                                                                                                    <i className="fas fa-pen-nib mr-1"></i>數位簽名
                                                                                                 </button>
-                                                                                                <div className="text-center text-xs text-slate-400 mt-2">-- 或 --</div>
+                                                                                                <button onClick={() => setSignMethod('paper')} className={`flex-1 py-2.5 text-sm font-bold transition border-b-2 ${signMethod === 'paper' ? 'border-blue-500 text-blue-700 bg-blue-50/50' : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
+                                                                                                    <i className="fas fa-print mr-1"></i>紙本簽名
+                                                                                                </button>
                                                                                             </div>
-                                                                                        ) : (
-                                                                                            doc.id !== 'doc_offset' && (
-                                                                                                <div className="bg-yellow-50 p-4 rounded-lg mb-4 text-sm text-yellow-800 border border-yellow-200">
-                                                                                                    <i className="fas fa-info-circle mr-1"></i> 請下載或分享文件，簽署後拍照上傳。
-                                                                                                </div>
-                                                                                            )
-                                                                                        )}
+                                                                                            <div className="p-4">
+                                                                                                {signMethod === 'online' ? (
+                                                                                                    <div className="space-y-4">
+                                                                                                        <SignatureCanvas onSave={setSignatureImg} onClear={() => setSignatureImg(null)} />
+                                                                                                        <button onClick={async () => {
+                                                                                                            if (isAmlDoc && !hasFundSourcesSelected()) { alert('請先勾選至少一項出資金額來源！'); return; }
+                                                                                                            const data = await handleGenerateDoc(doc.id, { signatureImage: signatureImg, isSigned: true });
+                                                                                                            if (data) alert('簽核版已產生並儲存！');
+                                                                                                        }} disabled={!signatureImg || isProcessing} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md disabled:opacity-50 transition">
+                                                                                                            {isProcessing ? <i className="fas fa-spinner fa-spin"></i> : <><i className="fas fa-paper-plane mr-2"></i>送出簽核</>}
+                                                                                                        </button>
+                                                                                                    </div>
+                                                                                                ) : (
+                                                                                                    <div className="space-y-3">
+                                                                                                        <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800 border border-yellow-200">
+                                                                                                            <i className="fas fa-info-circle mr-1"></i>請先下載文件，列印簽名後再上傳
+                                                                                                        </div>
+                                                                                                        <button onClick={() => handleGeneratePDF('download', doc.id)} className="w-full border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center shadow-sm">
+                                                                                                            <i className="fas fa-download mr-2"></i>下載 PDF
+                                                                                                        </button>
+                                                                                                        <div className="space-y-2 pt-2">
+                                                                                                            <button onClick={() => document.getElementById(`file-upload-${doc.id}`).click()} className="w-full border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
+                                                                                                                <i className="fas fa-file-upload"></i><span>選擇檔案上傳</span>
+                                                                                                            </button>
+                                                                                                            <button onClick={() => document.getElementById(`camera-upload-${doc.id}`).click()} className="w-full border border-green-300 text-green-700 py-3 rounded-lg font-bold hover:bg-green-50 transition flex items-center justify-center gap-2">
+                                                                                                                <i className="fas fa-camera"></i><span>拍照上傳</span>
+                                                                                                            </button>
+                                                                                                            <input id={`file-upload-${doc.id}`} type="file" accept="image/*,application/pdf" onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
+                                                                                                            <input id={`camera-upload-${doc.id}`} type="file" accept="image/*" capture="environment" onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
+                                                                                                            <p className="text-xs text-slate-400 text-center">支援 PDF、JPG、PNG 格式</p>
+                                                                                                        </div>
+                                                                                                    </div>
+                                                                                                )}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    )}
 
-                                                                                        <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-1'} gap-3 mb-4 mt-6`}>
-                                                                                            <button onClick={() => handleGeneratePDF('download', doc.id)} className="border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center shadow-sm">
+                                                                                    {/* 法人 hybrid → 只顯示紙本流程（大小章蓋印上傳） */}
+                                                                                    {type === 'legal' && isHybrid && (
+                                                                                        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
+                                                                                            <h4 className="font-bold text-slate-700 text-sm"><i className="fas fa-stamp mr-1"></i>用印簽核</h4>
+                                                                                            <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800 border border-yellow-200">
+                                                                                                <i className="fas fa-info-circle mr-1"></i>請下載文件，蓋大小章後上傳
+                                                                                            </div>
+                                                                                            <button onClick={() => handleGeneratePDF('download', doc.id)} className="w-full border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center shadow-sm">
+                                                                                                <i className="fas fa-download mr-2"></i>下載 PDF
+                                                                                            </button>
+                                                                                            <div className="space-y-2 pt-2">
+                                                                                                <button onClick={() => document.getElementById(`file-upload-${doc.id}`).click()} className="w-full border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
+                                                                                                    <i className="fas fa-file-upload"></i><span>選擇檔案</span>
+                                                                                                </button>
+                                                                                                <button onClick={() => document.getElementById(`camera-upload-${doc.id}`).click()} className="w-full border border-green-300 text-green-700 py-3 rounded-lg font-bold hover:bg-green-50 transition flex items-center justify-center gap-2">
+                                                                                                    <i className="fas fa-camera"></i><span>拍照上傳</span>
+                                                                                                </button>
+                                                                                                <input id={`file-upload-${doc.id}`} type="file" accept="image/*,application/pdf" onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
+                                                                                                <input id={`camera-upload-${doc.id}`} type="file" accept="image/*" capture="environment" onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
+                                                                                                <p className="text-xs text-slate-400 text-center">支援 PDF、JPG、PNG 格式</p>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    )}
+
+                                                                                    {/* paper_only (doc_offset) → 只有下載 + 提示繳回正本 */}
+                                                                                    {isPaperOnly && (
+                                                                                        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
+                                                                                            <button onClick={() => handleGeneratePDF('download', doc.id)} className="w-full border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center shadow-sm">
                                                                                                 <i className="fas fa-download mr-2"></i>下載 PDF
                                                                                             </button>
                                                                                             {isMobile && (
-                                                                                            <button onClick={() => handleGeneratePDF('share', doc.id)} className="bg-[#06C755] text-white py-3 rounded-lg font-bold hover:bg-[#05b54d] transition flex items-center justify-center shadow-sm">
-                                                                                                <i className="fab fa-line mr-2"></i>Line
+                                                                                            <button onClick={() => handleGeneratePDF('share', doc.id)} className="w-full bg-[#06C755] text-white py-3 rounded-lg font-bold hover:bg-[#05b54d] transition flex items-center justify-center shadow-sm">
+                                                                                                <i className="fab fa-line mr-2"></i>Line 分享
                                                                                             </button>
                                                                                             )}
                                                                                         </div>
+                                                                                    )}
 
-                                                                                        {/* ★★★ 文件產生狀態顯示 ★★★ */}
-                                                                                        {docGenResults[doc.id] && (
-                                                                                            <div className={`mt-4 p-2.5 rounded text-xs ${docGenResults[doc.id].success ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
-                                                                                                <i className={`fas ${docGenResults[doc.id].success ? 'fa-check-circle' : 'fa-times-circle'} mr-1`}></i>
-                                                                                                {docGenResults[doc.id].success ? '原檔已產生' : (docGenResults[doc.id].error || '產生失敗')}
-                                                                                            </div>
-                                                                                        )}
-
-                                                                                        <div className="mt-6 pt-4 border-t border-slate-100">
-                                                                                            {doc.id === 'doc_offset' ? (
-                                                                                                <div className="bg-red-50 p-4 rounded-lg border border-red-200">
-                                                                                                    <p className="text-red-700 font-bold text-sm flex items-center"><i className="fas fa-exclamation-triangle mr-2"></i>本文件需繳回正本</p>
-                                                                                                    <p className="text-sm text-red-600 mt-2">請於股東會現場交付，或郵寄正本：</p>
-                                                                                                    <div className="mt-3 bg-white p-3 rounded border border-red-100 text-sm text-slate-700 space-y-1">
-                                                                                                        <div><span className="font-bold">收件人：</span>陳英傑</div>
-                                                                                                        <div><span className="font-bold">手　機：</span>0912-754-402</div>
-                                                                                                        <div className="mt-1"><span className="font-bold">地址：</span>文山指南郵局 i郵箱（箱體編號 #2233）</div>
-                                                                                                        <div className="text-xs text-slate-400 mt-1 ml-8">參考地址：116台北市文山區指南路2段115號</div>
-                                                                                                    </div>
-                                                                                                </div>
-                                                                                            ) : type === 'legal' && doc.id !== 'doc_offset' ? (
-                                                                                                <div>
-                                                                                                    <label className="block text-sm font-bold text-slate-700 mb-3">上傳已用印文件</label>
-                                                                                                    <div className="space-y-2">
-                                                                                                        <button onClick={() => document.getElementById(`file-upload-${doc.id}`).click()} className="w-full border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
-                                                                                                            <i className="fas fa-file-upload"></i>
-                                                                                                            <span>選擇檔案</span>
-                                                                                                        </button>
-                                                                                                        <button onClick={() => document.getElementById(`camera-upload-${doc.id}`).click()} className="w-full border border-green-300 text-green-700 py-3 rounded-lg font-bold hover:bg-green-50 transition flex items-center justify-center gap-2">
-                                                                                                            <i className="fas fa-camera"></i>
-                                                                                                            <span>拍照上傳</span>
-                                                                                                        </button>
-                                                                                                        <input id={`file-upload-${doc.id}`} type="file" accept="image/*,application/pdf" onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
-                                                                                                        <input id={`camera-upload-${doc.id}`} type="file" accept="image/*" capture="environment" onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
-                                                                                                        <p className="text-xs text-slate-400 text-center">支援 PDF、JPG、PNG 格式</p>
-                                                                                                        {docGenResults[doc.id + '_signed'] && (
-                                                                                                            <div className="mt-2 p-2 rounded text-xs bg-green-50 text-green-700 border border-green-200">
-                                                                                                                <i className="fas fa-check-circle mr-1"></i>簽核版已上傳
-                                                                                                            </div>
-                                                                                                        )}
-                                                                                                    </div>
-                                                                                                </div>
-                                                                                            ) : null}
+                                                                                    {/* ★★★ 文件產生狀態顯示 ★★★ */}
+                                                                                    {docGenResults[doc.id] && (
+                                                                                        <div className={`p-2.5 rounded text-xs ${docGenResults[doc.id].success ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                                                                                            <i className={`fas ${docGenResults[doc.id].success ? 'fa-check-circle' : 'fa-times-circle'} mr-1`}></i>
+                                                                                            {docGenResults[doc.id].success ? '原檔已產生' : (docGenResults[doc.id].error || '產生失敗')}
                                                                                         </div>
-                                                                                    </div>
+                                                                                    )}
+                                                                                    {docGenResults[doc.id + '_signed'] && (
+                                                                                        <div className="p-2.5 rounded text-xs bg-green-50 text-green-700 border border-green-200">
+                                                                                            <i className="fas fa-check-circle mr-1"></i>簽核版已上傳
+                                                                                        </div>
+                                                                                    )}
+
+                                                                                    {/* doc_offset 特殊：股務確認狀態 */}
+                                                                                    {doc.id === 'doc_offset' && shareholderInfo.docOffsetConfirmed && (
+                                                                                        <div className="p-3 rounded-lg bg-green-50 text-green-700 border border-green-200 flex items-center gap-2">
+                                                                                            <i className="fas fa-check-circle text-lg"></i>
+                                                                                            <span className="font-bold text-sm">股務已確認繳交</span>
+                                                                                        </div>
+                                                                                    )}
+
+                                                                                    {/* doc_offset 特殊：繳回正本提示 */}
+                                                                                    {doc.id === 'doc_offset' && !shareholderInfo.docOffsetConfirmed && (
+                                                                                        <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                                                                                            <p className="text-red-700 font-bold text-sm flex items-center"><i className="fas fa-exclamation-triangle mr-2"></i>本文件需繳回正本</p>
+                                                                                            <p className="text-sm text-red-600 mt-2">請於股東會現場交付，或郵寄正本：</p>
+                                                                                            <div className="mt-3 bg-white p-3 rounded border border-red-100 text-sm text-slate-700 space-y-1">
+                                                                                                <div><span className="font-bold">收件人：</span>陳英傑</div>
+                                                                                                <div><span className="font-bold">手　機：</span>0912-754-402</div>
+                                                                                                <div className="mt-1"><span className="font-bold">地址：</span>文山指南郵局 i郵箱（箱體編號 #2233）</div>
+                                                                                                <div className="text-xs text-slate-400 mt-1 ml-8">參考地址：116台北市文山區指南路2段115號</div>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    )}
                                                                                 </div>
                                                                             </div>
                                                                         </div>
@@ -2376,7 +1882,7 @@
 
                     </div >
 
-                    {/* ★★★ 手機版文件預覽 全螢幕 Modal ★★★ */}
+                    {/* ★★★ 手機版文件預覽 全螢幕 Modal（iframe） ★★★ */}
                     {previewModalDocId && (
                         <div className="fixed inset-0 z-50 bg-black/60 flex flex-col" onClick={() => setPreviewModalDocId(null)}>
                             <div className="bg-white flex items-center justify-between px-4 py-3 shadow-md shrink-0" onClick={e => e.stopPropagation()}>
@@ -2387,10 +1893,24 @@
                                     <i className="fas fa-times"></i>
                                 </button>
                             </div>
-                            <div className="flex-1 overflow-auto bg-white" onClick={e => e.stopPropagation()}>
-                                <div className="p-4 min-w-[640px]">
-                                    <DocumentPreview docId={previewModalDocId} data={isSubscriptionConfirmed ? { shareholderId, shareholderName: name, ...shareholderInfo, sharesMap, totalShares: result?.totalShares, totalNewShares: result?.totalNewShares, offsetCost: result?.finalOffsetCost, extraCost: result?.extraCost, totalNetDividend: result?.totalNetDividend, totalGrossDividend: result?.totalGrossDividend, healthInsuranceDeduction: result?.dividendResults?.reduce((sum, d) => sum + d.hi, 0) || 0, remainingDividendCash: result?.remainingDividendCash, totalCost: result?.totalCost } : { shareholderId, shareholderName: name, ...shareholderInfo, sharesMap }} signatureImg={signatureImg} config={config} fundSources={fundSources} onToggleFundSource={toggleFundSource} />
-                                </div>
+                            <div className="flex-1 bg-white" onClick={e => e.stopPropagation()}>
+                                {previewLoading[previewModalDocId] ? (
+                                    <div className="flex items-center justify-center h-full">
+                                        <i className="fas fa-spinner fa-spin text-3xl text-blue-400 mr-3"></i>
+                                        <span className="text-slate-500">載入預覽中...</span>
+                                    </div>
+                                ) : previewHtmlMap[previewModalDocId] ? (
+                                    <iframe
+                                        srcDoc={previewHtmlMap[previewModalDocId]}
+                                        className="w-full h-full border-0"
+                                        title="文件預覽"
+                                        sandbox="allow-same-origin"
+                                    />
+                                ) : (
+                                    <div className="flex items-center justify-center h-full">
+                                        <span className="text-slate-400">預覽載入失敗，請關閉後重試</span>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}
