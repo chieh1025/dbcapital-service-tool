@@ -1561,6 +1561,11 @@
                                                                                     <i className="fas fa-check-circle mr-1"></i>已繳交 {shareholderInfo.docStatuses[doc.id]}
                                                                                 </span>
                                                                             )}
+                                                                            {doc.id === 'doc_offset' && shareholderInfo.docOffsetConfirmed && (
+                                                                                <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-bold whitespace-nowrap">
+                                                                                    <i className="fas fa-stamp mr-1"></i>股務已確認
+                                                                                </span>
+                                                                            )}
                                                                             <i className={`fas fa-chevron-down transition-transform ${isExpanded ? 'rotate-180 text-blue-600' : 'text-slate-300'}`}></i>
                                                                         </div>
                                                                     </div>
