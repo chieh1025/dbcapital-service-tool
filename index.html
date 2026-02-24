@@ -488,9 +488,13 @@
                                 }
                             }
                             // ★★★ Feature: Auto-Load Saved Subscription Data ★★★
-                            if (data.saved_subscription) {
+                            if (data.willParticipate === '是') {
                                 setWillingToOffset(true);
-                                setAdditionalShares(data.saved_subscription.toString());
+                                setAdditionalShares((data.subscriptionShares || 0).toString());
+                                setIsSubscriptionConfirmed(true);
+                            } else if (data.willParticipate === '否') {
+                                setWillingToOffset(false);
+                                setIsSubscriptionConfirmed(true);
                             }
 
                             alert(`驗證成功！歡迎 ${data.name} 股東。`);
