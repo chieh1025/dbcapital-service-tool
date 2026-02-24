@@ -618,10 +618,13 @@
                     setDocGenResults(prev => ({ ...prev, [docId]: data }));
 
                     if (data.success) {
-                        // 即時更新 docFiles 讓下載按鈕變色
-                        if (data.key) {
-                            setShareholderInfo(prev => ({ ...prev, docFiles: { ...prev.docFiles, [docId]: data.key } }));
-                        }
+                        // 即時更新 docFiles + docStatuses
+                        const nowStr = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
+                        setShareholderInfo(prev => ({
+                            ...prev,
+                            docFiles: { ...prev.docFiles, ...(data.key ? { [docId]: data.key } : {}) },
+                            docStatuses: { ...prev.docStatuses, [docId]: nowStr }
+                        }));
                         return data;
                     } else {
                         alert('文件產生失敗：' + (data.error || data.message || '未知錯誤'));
@@ -821,8 +824,13 @@
                         });
                         const data = await uploadSignedFile(docId, base64, '.pdf');
                         if (data.success) {
+                            const nowStr = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
                             setDocGenResults(prev => ({ ...prev, [docId + '_signed']: { success: true, key: data.key } }));
-                            if (data.key) setShareholderInfo(prev => ({ ...prev, docFiles: { ...prev.docFiles, [docId]: data.key } }));
+                            setShareholderInfo(prev => ({
+                                ...prev,
+                                docFiles: { ...prev.docFiles, ...(data.key ? { [docId]: data.key } : {}) },
+                                docStatuses: { ...prev.docStatuses, [docId]: nowStr }
+                            }));
                             alert('簽核版上傳成功！');
                         } else {
                             alert('上傳失敗：' + (data.message || '未知錯誤'));
@@ -882,8 +890,13 @@
                     const pdfBase64 = 'data:application/pdf;base64,' + pdf.output('datauristring').split(',')[1];
                     const data = await uploadSignedFile(docId, pdfBase64, '.pdf');
                     if (data.success) {
+                        const nowStr = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
                         setDocGenResults(prev => ({ ...prev, [docId + '_signed']: { success: true, key: data.key } }));
-                        if (data.key) setShareholderInfo(prev => ({ ...prev, docFiles: { ...prev.docFiles, [docId]: data.key } }));
+                        setShareholderInfo(prev => ({
+                            ...prev,
+                            docFiles: { ...prev.docFiles, ...(data.key ? { [docId]: data.key } : {}) },
+                            docStatuses: { ...prev.docStatuses, [docId]: nowStr }
+                        }));
                         setPendingImages(prev => { const n = { ...prev }; delete n[docId]; return n; });
                         alert('已合併 ' + images.length + ' 張圖片為 PDF 並上傳成功！');
                     } else {
