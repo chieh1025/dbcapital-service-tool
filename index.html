@@ -644,6 +644,10 @@
                     setDocGenResults(prev => ({ ...prev, [docId]: data }));
 
                     if (data.success) {
+                        // 即時更新 docFiles 讓下載按鈕變色
+                        if (data.key) {
+                            setShareholderInfo(prev => ({ ...prev, docFiles: { ...prev.docFiles, [docId]: data.key } }));
+                        }
                         return data;
                     } else {
                         alert('文件產生失敗：' + (data.error || data.message || '未知錯誤'));
@@ -844,6 +848,7 @@
                         const data = await uploadSignedFile(docId, base64, '.pdf');
                         if (data.success) {
                             setDocGenResults(prev => ({ ...prev, [docId + '_signed']: { success: true, key: data.key } }));
+                            if (data.key) setShareholderInfo(prev => ({ ...prev, docFiles: { ...prev.docFiles, [docId]: data.key } }));
                             alert('簽核版上傳成功！');
                         } else {
                             alert('上傳失敗：' + (data.message || '未知錯誤'));
@@ -904,6 +909,7 @@
                     const data = await uploadSignedFile(docId, pdfBase64, '.pdf');
                     if (data.success) {
                         setDocGenResults(prev => ({ ...prev, [docId + '_signed']: { success: true, key: data.key } }));
+                        if (data.key) setShareholderInfo(prev => ({ ...prev, docFiles: { ...prev.docFiles, [docId]: data.key } }));
                         setPendingImages(prev => { const n = { ...prev }; delete n[docId]; return n; });
                         alert('已合併 ' + images.length + ' 張圖片為 PDF 並上傳成功！');
                     } else {
@@ -1562,11 +1568,9 @@
                                                                     <div className={`accordion-content ${isExpanded ? 'expanded' : ''} bg-slate-50`}>
                                                                         <div className="p-4 sm:p-6 border-t border-blue-100">
                                                                             {/* ★ 下載上次已產生的文件 */}
-                                                                            {shareholderInfo.docFiles[doc.id] && (
-                                                                                <button onClick={() => handleDownloadExisting(doc.id)} className="w-full mb-4 bg-green-50 border border-green-300 text-green-700 py-3 rounded-lg font-bold hover:bg-green-100 transition flex items-center justify-center gap-2">
-                                                                                    <i className="fas fa-file-download"></i><span>下載上次文件</span>
-                                                                                </button>
-                                                                            )}
+                                                                            <button onClick={() => handleDownloadExisting(doc.id)} disabled={!shareholderInfo.docFiles[doc.id]} className={`w-full mb-4 py-3 rounded-lg font-bold transition flex items-center justify-center gap-2 ${shareholderInfo.docFiles[doc.id] ? 'bg-green-50 border border-green-300 text-green-700 hover:bg-green-100' : 'bg-slate-100 border border-slate-200 text-slate-300 cursor-not-allowed'}`}>
+                                                                                <i className="fas fa-file-download"></i><span>下載上次文件</span>
+                                                                            </button>
                                                                             {/* ★ 手機版：預覽按鈕 + 全螢幕 Modal */}
                                                                             {isMobile && (
                                                                                 <button onClick={() => { if (!previewHtmlMap[doc.id]) handlePreviewDoc(doc.id); setPreviewModalDocId(doc.id); }} className="w-full mb-4 border border-blue-300 text-blue-700 py-3 rounded-lg font-bold hover:bg-blue-50 transition flex items-center justify-center gap-2">
