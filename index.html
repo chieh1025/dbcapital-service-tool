@@ -1090,8 +1090,21 @@
 
             // --- TABS VISUAL ---
             const handleTabClick = (targetId) => {
+                // 離開增資頁籤提醒
                 if (activeTab === 'capital_increase' && targetId !== 'capital_increase' && result && !isSubscriptionConfirmed) {
                     if (!confirm('您尚未送出增資選項，確定要離開此頁嗎？')) return;
+                }
+                // 進入增資頁籤提示
+                if (targetId === 'capital_increase' && isVerified && result) {
+                    if (!isSubscriptionConfirmed) {
+                        alert('提醒：您尚未送出增資選項，請在本頁選擇是否參與增資並按下送出按鈕。');
+                    } else {
+                        const shares = willingToOffset ? (Number(additionalShares) || 0) : 0;
+                        const info = willingToOffset
+                            ? `參與增資：是\n認購股數：${shares.toLocaleString()} 股\n${result.finalBalance >= 0 ? '應收股利：' + result.finalBalance.toLocaleString() : '需補繳股款：' + Math.abs(result.finalBalance).toLocaleString()}`
+                            : `參與增資：否\n預計領回股利：${result.totalNetDividend.toLocaleString()}`;
+                        alert('您的增資選項紀錄：\n\n' + info);
+                    }
                 }
                 setActiveTab(targetId);
             };
@@ -1129,7 +1142,7 @@
                         <div className="flex border-b border-slate-200 bg-slate-50/50 no-print overflow-x-auto">
                             <MenuItem id="identity" label="1. 身份驗證" icon="fa-id-card" />
                             <MenuItem id="net_value" label="2. 每月淨值" icon="fa-chart-line" />
-                            <MenuItem id="capital_increase" label="3. 增資文件填繳" icon="fa-file-invoice-dollar" />
+                            <MenuItem id="capital_increase" label="3. 增資文件" icon="fa-file-invoice-dollar" />
                             <MenuItem id="meeting_docs" label="4. 股東會文件" icon="fa-users" />
                         </div>
 
@@ -1539,7 +1552,7 @@
                                                                         <div className="flex items-center gap-3">
                                                                             {shareholderInfo.docStatuses[doc.id] && (
                                                                                 <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-bold whitespace-nowrap">
-                                                                                    <i className="fas fa-check-circle mr-1"></i>{shareholderInfo.docStatuses[doc.id]}
+                                                                                    <i className="fas fa-check-circle mr-1"></i>已繳交 {shareholderInfo.docStatuses[doc.id]}
                                                                                 </span>
                                                                             )}
                                                                             <i className={`fas fa-chevron-down transition-transform ${isExpanded ? 'rotate-180 text-blue-600' : 'text-slate-300'}`}></i>
