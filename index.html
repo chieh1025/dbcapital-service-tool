@@ -761,7 +761,17 @@
             };
 
             // ★★★ 法人上傳已用印文件 → R2（帶 _signed 後綴）★★★
+            const docNameMap = {
+                doc_offset: '1_債權抵繳股款明細表',
+                doc_invest: '2_現金增資投資協議書',
+                doc_client: '3_客戶聲明書',
+                doc_aml_nat: '4_洗錢防制聲明書_自然人',
+                doc_aml_leg: '5_洗錢防制聲明書_法人',
+                doc_beneficial: '6_所有權人_實質受益人聲明書',
+            };
+
             const uploadSignedFile = async (docId, base64, ext) => {
+                const docLabel = docNameMap[docId] || docId;
                 const now = new Date();
                 const ts = now.getFullYear().toString()
                     + String(now.getMonth() + 1).padStart(2, '0')
@@ -769,7 +779,7 @@
                     + String(now.getHours()).padStart(2, '0')
                     + String(now.getMinutes()).padStart(2, '0')
                     + String(now.getSeconds()).padStart(2, '0');
-                const safeKey = `${shareholderId}_${docId}_${ts}_signed${ext}`;
+                const safeKey = `${shareholderId}_${docLabel}_${ts}_signed${ext}`;
                 const workerUrl = 'https://n8n-dbcapital-tool.chieh1025.workers.dev/';
                 const res = await fetch(workerUrl, {
                     method: 'POST',
@@ -1388,7 +1398,8 @@
                                             {/* Preview Card */}
                                             {result && (
                                                 <div>
-                                                    <div id="print-section" className="bg-white border-4 border-slate-800 rounded-xl p-4 sm:p-8 print-border mt-10 text-base sm:text-xl font-medium text-slate-900">
+                                                    <div id="print-section" className="mt-10 p-4" style={{ backgroundColor: '#f8fafc' }}>
+                                                    <div className="bg-white border-4 border-slate-800 rounded-xl p-4 sm:p-8 text-base sm:text-xl font-medium text-slate-900 shadow-lg">
                                                         <div className="text-center mb-4 sm:mb-8">
                                                             <h3 className="text-2xl sm:text-4xl font-extrabold mb-2 sm:mb-3 tracking-wide">{config.companyName}</h3>
                                                             <div className="inline-block border-b-4 border-slate-800 pb-2 mb-2">
@@ -1439,10 +1450,11 @@
                                                             </div>
                                                         </div>
                                                     </div>
+                                                    </div>
 
                                                     <div className="flex justify-center gap-3 sm:gap-4 mt-6 sm:mt-8 no-print">
                                                         <button onClick={handleDownloadImage} disabled={isCapturing} className="bg-slate-700 text-white px-4 sm:px-8 py-3 rounded-lg font-bold hover:bg-slate-800 shadow-md transform transition active:scale-95 flex items-center justify-center whitespace-nowrap flex-1 sm:flex-none sm:min-w-[150px]">
-                                                            <i className="fas fa-download mr-2"></i>下載圖片
+                                                            {isMobile ? <><i className="fas fa-share-alt mr-2"></i>儲存 / 分享</> : <><i className="fas fa-download mr-2"></i>下載圖片</>}
                                                         </button>
                                                     </div>
                                                 </div>
