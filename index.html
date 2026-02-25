@@ -344,7 +344,7 @@
                                             address: data.address || '',
                                             phone: data.phone || '',
                                             representative: data.representative || '',
-                                            docOffsetConfirmed: data.docOffsetConfirmed === 'V',
+                                            docConfirmed: data.docConfirmed || {},
                                             docStatuses: data.docStatuses || {},
                                             docFiles: data.docFiles || {}
                                         });
@@ -404,7 +404,7 @@
             const [name, setName] = useState('');
             const [shareholderId, setShareholderId] = useState('');
             const [shareholderInfo, setShareholderInfo] = useState({
-                idNumber: '', birthDate: '', nationality: '', address: '', phone: '', representative: '', docOffsetConfirmed: false, docStatuses: {}
+                idNumber: '', birthDate: '', nationality: '', address: '', phone: '', representative: '', docConfirmed: {}, docStatuses: {}
             });
 
             // 驗證相關
@@ -586,7 +586,7 @@
                                 address: data.address || '',
                                 phone: data.phone || '',
                                 representative: data.representative || '',
-                                docOffsetConfirmed: data.docOffsetConfirmed === 'V',
+                                docConfirmed: data.docConfirmed || {},
                                 docStatuses: data.docStatuses || {},
                                 docFiles: data.docFiles || {}
                             });
@@ -1730,9 +1730,9 @@
                                                                                     <i className="fas fa-check-circle mr-1"></i>已繳交 {shareholderInfo.docStatuses[doc.id]}
                                                                                 </span>
                                                                             )}
-                                                                            {doc.id === 'doc_offset' && shareholderInfo.docOffsetConfirmed && (
+                                                                            {shareholderInfo.docConfirmed[doc.id] && (
                                                                                 <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-bold whitespace-nowrap">
-                                                                                    <i className="fas fa-stamp mr-1"></i>股務已確認
+                                                                                    <i className="fas fa-stamp mr-1"></i>{doc.id === 'doc_offset' ? '已收到正本' : '已確認'}
                                                                                 </span>
                                                                             )}
                                                                             <i className={`fas fa-chevron-down transition-transform ${isExpanded ? 'rotate-180 text-blue-600' : 'text-slate-300'}`}></i>
@@ -1940,16 +1940,16 @@
                                                                                         </div>
                                                                                     )}
 
-                                                                                    {/* doc_offset 特殊：股務確認狀態 */}
-                                                                                    {doc.id === 'doc_offset' && shareholderInfo.docOffsetConfirmed && (
+                                                                                    {/* 股務確認狀態 */}
+                                                                                    {shareholderInfo.docConfirmed[doc.id] && (
                                                                                         <div className="p-3 rounded-lg bg-green-50 text-green-700 border border-green-200 flex items-center gap-2">
                                                                                             <i className="fas fa-check-circle text-lg"></i>
-                                                                                            <span className="font-bold text-sm">股務已確認繳交</span>
+                                                                                            <span className="font-bold text-sm">{doc.id === 'doc_offset' ? '📄 已收到正本' : '✅ 已確認'}</span>
                                                                                         </div>
                                                                                     )}
 
                                                                                     {/* doc_offset 特殊：繳回正本提示 */}
-                                                                                    {doc.id === 'doc_offset' && !shareholderInfo.docOffsetConfirmed && (
+                                                                                    {doc.id === 'doc_offset' && !shareholderInfo.docConfirmed['doc_offset'] && (
                                                                                         <div className="bg-red-50 p-4 rounded-lg border border-red-200">
                                                                                             <p className="text-red-700 font-bold text-sm flex items-center"><i className="fas fa-exclamation-triangle mr-2"></i>本文件需繳回正本</p>
                                                                                             <p className="text-sm text-red-600 mt-2">請於股東會現場交付，或郵寄正本：</p>
