@@ -527,25 +527,6 @@
                 sessionStorage.removeItem('dbcapital_session');
             };
 
-            // ★★★ LINE 解除綁定 ★★★
-            const handleLineUnbind = async () => {
-                if (!lineUserId) return;
-                if (!confirm('確定要解除 LINE 帳號綁定嗎？\n解除後需重新輸入驗證碼登入。')) return;
-                try {
-                    const res = await fetch(config.n8nApiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ type: 'line_unbind_via_web', lineUserId }),
-                    });
-                    // 不管成功與否，都重置狀態
-                    setLineBindStatus('');
-                    setLineUserId('');
-                    handleLogout();
-                    alert('已解除 LINE 綁定。');
-                } catch (e) {
-                    alert('解除綁定失敗: ' + e.message);
-                }
-            };
 
             // ★★★ 30 分鐘無操作自動登出 ★★★
             const SESSION_TIMEOUT = 30 * 60 * 1000;
@@ -1371,7 +1352,6 @@
                                                     <span className="inline-flex items-center gap-1 px-3 py-1 text-xs font-bold rounded-full bg-green-100 text-green-700">
                                                         <i className="fab fa-line" style={{color:'#06C755'}}></i> LINE 已綁定
                                                     </span>
-                                                    <button onClick={handleLineUnbind} className="text-xs text-slate-400 hover:text-red-500 underline">解除綁定</button>
                                                 </div>
                                             )}
                                             {!lineBindStatus && <div className="mb-4"></div>}
