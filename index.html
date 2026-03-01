@@ -406,6 +406,11 @@
                 return new Date() < new Date(startTime);
             };
 
+            const fmtTime = (dt) => {
+                if (!dt) return '';
+                return dt.replace('T', ' ').replace(/-/g, '/');
+            };
+
             // ★★★ 取得 tab 狀態 ★★★
             const getTabStatus = (tabId) => {
                 return config.tabConfig ? (config.tabConfig[tabId] || 'active') : 'active';
@@ -2150,9 +2155,9 @@
                                                 <h3 className="font-bold text-lg text-blue-800 flex items-center">
                                                     <i className="fas fa-qrcode mr-3 text-blue-500"></i>線上報到
                                                     <span className="ml-auto text-xs text-slate-500 font-normal">
-                                                        {config.checkinStartTime && `開放：${config.checkinStartTime}`}
+                                                        {config.checkinStartTime && `開放：${fmtTime(config.checkinStartTime)}`}
                                                         {config.checkinStartTime && config.checkinDeadline && ' ～ '}
-                                                        {config.checkinDeadline && `截止：${config.checkinDeadline}`}
+                                                        {config.checkinDeadline && `截止：${fmtTime(config.checkinDeadline)}`}
                                                     </span>
                                                 </h3>
                                             </div>
@@ -2166,7 +2171,7 @@
                                                     <div className="text-center py-6 text-slate-500">
                                                         <i className="fas fa-clock text-3xl text-amber-300 mb-3"></i>
                                                         <p className="font-bold text-amber-600">報到尚未開放</p>
-                                                        <p className="text-sm mt-1">開放時間：{config.checkinStartTime}</p>
+                                                        <p className="text-sm mt-1">開放時間：{fmtTime(config.checkinStartTime)}</p>
                                                     </div>
                                                 ) : checkinExpired ? (
                                                     <div className="text-center py-6 text-slate-500">
@@ -2232,9 +2237,9 @@
                                                 <h3 className="font-bold text-lg text-purple-800 flex items-center">
                                                     <i className="fas fa-vote-yea mr-3 text-purple-500"></i>電子投票
                                                     <span className="ml-auto text-xs text-slate-500 font-normal">
-                                                        {config.voteStartTime && `開放：${config.voteStartTime}`}
+                                                        {config.voteStartTime && `開放：${fmtTime(config.voteStartTime)}`}
                                                         {config.voteStartTime && config.voteDeadline && ' ～ '}
-                                                        {config.voteDeadline && `截止：${config.voteDeadline}`}
+                                                        {config.voteDeadline && `截止：${fmtTime(config.voteDeadline)}`}
                                                     </span>
                                                 </h3>
                                             </div>
@@ -2248,7 +2253,7 @@
                                                     <div className="text-center py-6 text-slate-500">
                                                         <i className="fas fa-clock text-3xl text-amber-300 mb-3"></i>
                                                         <p className="font-bold text-amber-600">投票尚未開放</p>
-                                                        <p className="text-sm mt-1">開放時間：{config.voteStartTime}</p>
+                                                        <p className="text-sm mt-1">開放時間：{fmtTime(config.voteStartTime)}</p>
                                                     </div>
                                                 ) : voteExpired ? (
                                                     <div className="text-center py-6 text-slate-500">
