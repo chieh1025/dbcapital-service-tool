@@ -1454,8 +1454,8 @@
                                                 </thead>
                                                 <tbody>
                                                     {config.netValueHistory.map((row, idx) => {
-                                                        if (idx >= 3 && !isTimelineExpanded) return null;
-                                                        const prev = config.netValueHistory[idx + 1];
+                                                        if (!isTimelineExpanded && idx < config.netValueHistory.length - 3) return null;
+                                                        const prev = config.netValueHistory[idx - 1];
                                                         const monthlyChange = prev && prev.nav ? ((row.nav - prev.nav) / prev.nav * 100).toFixed(1) + '%' : '-';
                                                         const monthlyColor = monthlyChange.startsWith('-') ? 'text-green-600' : (monthlyChange === '-' ? 'text-slate-400' : 'text-red-600');
                                                         return (
