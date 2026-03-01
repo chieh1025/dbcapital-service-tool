@@ -1476,11 +1476,11 @@
                                         <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 flex flex-col justify-center">
                                             {/* Identity Type Lock */}
                                             <div className="flex gap-4 mb-6">
-                                                <label className={`flex-1 p-3 border rounded text-center cursor-pointer ${type === 'natural' ? 'bg-blue-100 border-blue-500 text-blue-700 font-bold' : (isVerified ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white')}`}>
-                                                    <input type="radio" checked={type === 'natural'} onChange={() => !isVerified && setType('natural')} disabled={isVerified} className="hidden" />自然人
+                                                <label className={`flex-1 p-3 border rounded text-center cursor-pointer ${type === 'natural' ? 'bg-blue-100 border-blue-500 text-blue-700 font-bold' : (isVerified && !isTestMode ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white')}`}>
+                                                    <input type="radio" checked={type === 'natural'} onChange={() => (!isVerified || isTestMode) && setType('natural')} disabled={isVerified && !isTestMode} className="hidden" />自然人
                                                 </label>
-                                                <label className={`flex-1 p-3 border rounded text-center cursor-pointer ${type === 'legal' ? 'bg-purple-100 border-purple-500 text-purple-700 font-bold' : (isVerified ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white')}`}>
-                                                    <input type="radio" checked={type === 'legal'} onChange={() => !isVerified && setType('legal')} disabled={isVerified} className="hidden" />法人
+                                                <label className={`flex-1 p-3 border rounded text-center cursor-pointer ${type === 'legal' ? 'bg-purple-100 border-purple-500 text-purple-700 font-bold' : (isVerified && !isTestMode ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-white')}`}>
+                                                    <input type="radio" checked={type === 'legal'} onChange={() => (!isVerified || isTestMode) && setType('legal')} disabled={isVerified && !isTestMode} className="hidden" />法人
                                                 </label>
                                             </div>
                                             <div className="text-xs text-slate-500">
