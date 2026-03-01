@@ -114,6 +114,13 @@
     <script type="text/babel">
         const { useState, useMemo, useEffect, useRef } = React;
 
+        const maskName = (name) => {
+            if (!name) return '***';
+            const str = String(name).trim();
+            if (str.length <= 1) return str + '**';
+            return str[0] + '*'.repeat(Math.min(str.length - 1, 7));
+        };
+
         // ==========================================
         // ★★★ DEFAULT CONFIG 設定預設值 ★★★
         // ==========================================
@@ -1359,7 +1366,7 @@
                                                 ) : (
                                                     <select className="w-full p-4 border border-slate-300 rounded-lg bg-white text-lg focus:ring-2 focus:ring-blue-500 outline-none" value={shareholderId} onChange={handleShareholderSelect}>
                                                         <option value="">-- 請選擇 --</option>
-                                                        {config.shareholderOptions.filter(opt => opt.id !== '合計' && (opt.status || 'active') === 'active').map(opt => (<option key={opt.id} value={opt.id}>{opt.label}</option>))}
+                                                        {config.shareholderOptions.filter(opt => opt.id !== '合計' && (opt.status || 'active') === 'active').map(opt => (<option key={opt.id} value={opt.id}>{opt.name ? (opt.id + ' ' + maskName(opt.name)) : opt.label}</option>))}
                                                     </select>
                                                 )}
                                             </div>
