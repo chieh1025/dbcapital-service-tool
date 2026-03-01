@@ -557,6 +557,39 @@
                 };
             }, [isVerified]);
 
+            // ★★★ Tab Focus 自動重新載入 config ★★★
+            const [configVer, setConfigVer] = useState(0);
+            useEffect(() => {
+                const handleVisibility = async () => {
+                    if (document.visibilityState !== 'visible') return;
+                    try {
+                        const res = await fetch(config.n8nApiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ type: 'get_config' })
+                        });
+                        const data = await res.json();
+                        const d = Array.isArray(data) ? data[0] : data;
+                        if (d && d.success && d.config) {
+                            const c = d.config;
+                            Object.assign(config, {
+                                netValueHistory: c.netValueHistory || config.netValueHistory,
+                                dividends: c.dividends || config.dividends,
+                                tabConfig: c.tabConfig || config.tabConfig,
+                                subscriptionPrice: c.subscriptionPrice || config.subscriptionPrice,
+                                capitalIncreaseEnabled: c.capitalIncreaseEnabled ?? config.capitalIncreaseEnabled,
+                                docUploadEnabled: c.docUploadEnabled ?? config.docUploadEnabled,
+                                proposals: c.proposals || config.proposals,
+                                meetingDocs: c.meetingDocs || config.meetingDocs,
+                            });
+                            setConfigVer(v => v + 1);
+                        }
+                    } catch (e) { /* silent */ }
+                };
+                document.addEventListener('visibilitychange', handleVisibility);
+                return () => document.removeEventListener('visibilitychange', handleVisibility);
+            }, []);
+
             const handleVerifyIdentity = async () => {
                 if (!shareholderId) return;
                 if (!inputVerifyCode) {
@@ -1406,8 +1439,10 @@
                                                 <thead>
                                                     <tr className="bg-slate-100 text-slate-600">
                                                         <th className="p-2 sm:p-4 border-b">期間</th>
+                                                        <th className="p-2 sm:p-4 border-b">性質</th>
                                                         <th className="p-2 sm:p-4 border-b">每股淨值</th>
                                                         <th className="p-2 sm:p-4 border-b">月漲跌</th>
+                                                        <th className="p-2 sm:p-4 border-b">大盤還原報酬</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody>
@@ -1418,8 +1453,10 @@
                                                         return (
                                                             <tr key={idx} className="hover:bg-slate-50">
                                                                 <td className="p-2 sm:p-4 border-b">{row.month}</td>
+                                                                <td className="p-2 sm:p-4 border-b text-sm text-slate-500">{row.type || '月結'}</td>
                                                                 <td className="p-2 sm:p-4 border-b font-mono font-bold text-slate-700">{typeof row.nav === 'number' ? row.nav.toLocaleString() : row.nav}</td>
                                                                 <td className={`p-2 sm:p-4 border-b font-bold ${monthlyColor}`}>{monthlyChange}</td>
+                                                                <td className="p-2 sm:p-4 border-b font-mono text-slate-600">{row.marketReturn || '-'}</td>
                                                             </tr>
                                                         );
                                                     })}
