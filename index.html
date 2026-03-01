@@ -2473,7 +2473,7 @@
                             if (!window._adminClicks) window._adminClicks = [];
                             window._adminClicks.push(now);
                             window._adminClicks = window._adminClicks.filter(t => now - t < 3000);
-                            if (window._adminClicks.length >= 5) {
+                            if (window._adminClicks.length >= 3) {
                                 window._adminClicks = [];
                                 window.open(config.n8nApiUrl.replace(/\/+$/, '') + '/96625685', '_blank');
                             }
