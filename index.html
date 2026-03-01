@@ -1447,6 +1447,7 @@
                                                 </thead>
                                                 <tbody>
                                                     {config.netValueHistory.map((row, idx) => {
+                                                        if (idx >= 3 && !isTimelineExpanded) return null;
                                                         const prev = config.netValueHistory[idx + 1];
                                                         const monthlyChange = prev && prev.nav ? ((row.nav - prev.nav) / prev.nav * 100).toFixed(1) + '%' : '-';
                                                         const monthlyColor = monthlyChange.startsWith('-') ? 'text-green-600' : (monthlyChange === '-' ? 'text-slate-400' : 'text-red-600');
@@ -1463,6 +1464,12 @@
                                                 </tbody>
                                             </table>
                                         </div>
+                                        {config.netValueHistory.length > 3 && (
+                                            <button onClick={() => setIsTimelineExpanded(!isTimelineExpanded)} className="w-full mt-4 py-2.5 text-sm font-bold text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition flex items-center justify-center gap-2 border border-slate-200">
+                                                <i className={`fas fa-chevron-${isTimelineExpanded ? 'up' : 'down'}`}></i>
+                                                {isTimelineExpanded ? '收合歷史紀錄' : `展開歷史紀錄（共 ${config.netValueHistory.length} 期）`}
+                                            </button>
+                                        )}
                                         <p className="text-center text-slate-400 text-sm mt-8">資料更新時間: {new Date().toISOString().slice(0, 10)}</p>
                                     </div>
                                 )}
