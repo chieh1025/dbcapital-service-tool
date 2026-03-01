@@ -1325,7 +1325,7 @@
                                                 ) : (
                                                     <select className="w-full p-4 border border-slate-300 rounded-lg bg-white text-lg focus:ring-2 focus:ring-blue-500 outline-none" value={shareholderId} onChange={handleShareholderSelect}>
                                                         <option value="">-- 請選擇 --</option>
-                                                        {config.shareholderOptions.filter(opt => opt.id !== '合計').map(opt => (<option key={opt.id} value={opt.id}>{opt.label}</option>))}
+                                                        {config.shareholderOptions.filter(opt => opt.id !== '合計' && (opt.status || 'active') === 'active').map(opt => (<option key={opt.id} value={opt.id}>{opt.label}</option>))}
                                                     </select>
                                                 )}
                                             </div>
@@ -2191,11 +2191,11 @@
                                                 </h3>
                                             </div>
                                             <div className="p-6">
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6">
                                                     {(config.meetingDocs || []).map((item, idx) => {
                                                         if (item.type === 'header') {
                                                             return (
-                                                                <div key={'hdr-' + idx} className="col-span-1 md:col-span-2">
+                                                                <div key={'hdr-' + idx} className="col-span-1 sm:col-span-2 md:col-span-3">
                                                                     <h3 className="text-base font-bold text-slate-600 border-b-2 border-slate-300 pb-2 mt-4 mb-1">
                                                                         {item.title}
                                                                     </h3>
