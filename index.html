@@ -451,12 +451,25 @@
             }, [fundSources]);
 
             // A3: 文件日期平移 — 若填寫日超出 config 設定的範圍，平移到最早/最晚日
+            const dateClampAlerted = useRef(false);
             const getClampedDocDate = () => {
                 const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
                 const earliest = config.docEarliestDate || '';
                 const latest = config.docLatestDate || '';
-                if (earliest && today < earliest) return earliest;
-                if (latest && today > latest) return latest;
+                if (earliest && today < earliest) {
+                    if (!dateClampAlerted.current) {
+                        dateClampAlerted.current = true;
+                        setTimeout(() => alert(`提醒：今日（${today}）早於文件日期範圍，文件日期將自動調整為 ${earliest}`), 100);
+                    }
+                    return earliest;
+                }
+                if (latest && today > latest) {
+                    if (!dateClampAlerted.current) {
+                        dateClampAlerted.current = true;
+                        setTimeout(() => alert(`提醒：今日（${today}）晚於文件日期範圍，文件日期將自動調整為 ${latest}`), 100);
+                    }
+                    return latest;
+                }
                 return today;
             };
 
