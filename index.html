@@ -122,7 +122,7 @@
             companyName: "達飆資本",
 
             // ★★★ n8n Webhook URL (使用 Cloudflare Worker) ★★★
-            n8nApiUrl: 'https://n8n-dbcapital-tool.chieh1025.workers.dev/',
+            n8nApiUrl: 'https://dbcapital-service-tool.chieh1025.workers.dev/',
 
             // ★★★ LIFF ID（LINE Login 自動登入）★★★
             liffId: '2009219090-Nthxai04',
@@ -263,6 +263,7 @@
         function App() {
             // ★★★ 開發模式：?dev=1 自然人 | ?dev=2 法人 ★★★
             const isAdmin = new URLSearchParams(window.location.search).get('admin') === '1';
+            const isTestMode = new URLSearchParams(window.location.search).get('test') === '1';
 
             // App Config State
             const [config, setConfig] = useState(DEFAULT_CONFIG);
@@ -274,7 +275,10 @@
             useEffect(() => {
                 const loadConfig = async () => {
                     try {
-                        const response = await fetch(DEFAULT_CONFIG.n8nApiUrl, {
+                        const configUrl = isTestMode
+                            ? DEFAULT_CONFIG.n8nApiUrl + '?test=1'
+                            : DEFAULT_CONFIG.n8nApiUrl;
+                        const response = await fetch(configUrl, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ type: 'get_config' })
@@ -845,9 +849,9 @@
                     }
 
                     // 2. 從 R2 下載 PDF
-                    const pdfUrl = config.n8nApiUrl.replace(/\/+$/, '').replace(/\/webhook\/api$/, '').replace(/n8n-dbcapital-service\.zeabur\.app.*/, 'n8n-dbcapital-tool.chieh1025.workers.dev') + '/' + data.key;
+                    const pdfUrl = config.n8nApiUrl.replace(/\/+$/, '').replace(/\/webhook\/api$/, '').replace(/n8n-dbcapital-service\.zeabur\.app.*/, 'dbcapital-service-tool.chieh1025.workers.dev') + '/' + data.key;
                     // 用 Worker URL 下載
-                    const workerBase = 'https://n8n-dbcapital-tool.chieh1025.workers.dev/';
+                    const workerBase = 'https://dbcapital-service-tool.chieh1025.workers.dev/';
                     const downloadUrl = workerBase + data.key;
 
                     const docTitle = config.documents.find(d => d.id === targetDocId)?.title || targetDocId;
@@ -892,7 +896,7 @@
             const handleDownloadExisting = async (docId) => {
                 const fileKey = shareholderInfo.docFiles[docId];
                 if (!fileKey) return;
-                const workerBase = 'https://n8n-dbcapital-tool.chieh1025.workers.dev/';
+                const workerBase = 'https://dbcapital-service-tool.chieh1025.workers.dev/';
                 const downloadUrl = workerBase + encodeURIComponent(fileKey);
                 const docTitle = config.documents.find(d => d.id === docId)?.title || docId;
                 const filename = `${shareholderId}_${name}_${docTitle}.pdf`;
@@ -933,7 +937,7 @@
                     + String(now.getMinutes()).padStart(2, '0')
                     + String(now.getSeconds()).padStart(2, '0');
                 const safeKey = `${shareholderId}_${docLabel}_${ts}_signed${ext}`;
-                const workerUrl = 'https://n8n-dbcapital-tool.chieh1025.workers.dev/';
+                const workerUrl = 'https://dbcapital-service-tool.chieh1025.workers.dev/';
                 const res = await fetch(workerUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -2188,27 +2192,39 @@
                                             </div>
                                             <div className="p-6">
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                                                    {(config.meetingDocs || []).map(doc => (
+                                                    {(config.meetingDocs || []).map((item, idx) => {
+                                                        if (item.type === 'header') {
+                                                            return (
+                                                                <div key={'hdr-' + idx} className="col-span-1 md:col-span-2">
+                                                                    <h3 className="text-base font-bold text-slate-600 border-b-2 border-slate-300 pb-2 mt-4 mb-1">
+                                                                        {item.title}
+                                                                    </h3>
+                                                                </div>
+                                                            );
+                                                        }
+                                                        const doc = item;
+                                                        return (
                                                         <div
-                                                            key={doc.id}
-                                                            onClick={() => setViewingDoc(viewingDoc === doc.id ? null : doc.id)}
-                                                            className={`p-5 rounded-xl border-2 cursor-pointer transition-all ${viewingDoc === doc.id ? 'border-blue-500 bg-blue-50 shadow-md' : 'border-slate-200 bg-white hover:border-blue-300 hover:shadow-sm'}`}
+                                                            key={doc.id || ('doc-' + idx)}
+                                                            onClick={() => setViewingDoc(viewingDoc === (doc.id || 'doc-' + idx) ? null : (doc.id || 'doc-' + idx))}
+                                                            className={`p-5 rounded-xl border-2 cursor-pointer transition-all ${viewingDoc === (doc.id || 'doc-' + idx) ? 'border-blue-500 bg-blue-50 shadow-md' : 'border-slate-200 bg-white hover:border-blue-300 hover:shadow-sm'}`}
                                                         >
                                                             <div className="flex items-start gap-4">
-                                                                <div className={`text-3xl ${viewingDoc === doc.id ? 'text-blue-500' : 'text-slate-300'}`}>
+                                                                <div className={`text-3xl ${viewingDoc === (doc.id || 'doc-' + idx) ? 'text-blue-500' : 'text-slate-300'}`}>
                                                                     <i className="fas fa-file-pdf"></i>
                                                                 </div>
                                                                 <div>
-                                                                    <h4 className={`font-bold ${viewingDoc === doc.id ? 'text-blue-800' : 'text-slate-700'}`}>{doc.title}</h4>
+                                                                    <h4 className={`font-bold ${viewingDoc === (doc.id || 'doc-' + idx) ? 'text-blue-800' : 'text-slate-700'}`}>{doc.title}</h4>
                                                                     <p className="text-xs text-slate-500 mt-1">{doc.desc}</p>
                                                                 </div>
                                                             </div>
                                                         </div>
-                                                    ))}
+                                                        );
+                                                    })}
                                                 </div>
 
                                                 {viewingDoc && (() => {
-                                                    const selectedDoc = (config.meetingDocs || []).find(d => d.id === viewingDoc);
+                                                    const selectedDoc = (config.meetingDocs || []).find((d, idx) => d.type !== 'header' && (d.id || 'doc-' + idx) === viewingDoc);
                                                     if (!selectedDoc || !selectedDoc.driveFileId) return null;
                                                     return (
                                                     <div className="fade-in">
@@ -2275,8 +2291,19 @@
                         </div>
                     )}
 
-                    <div className="text-center mt-10 text-slate-400 text-sm no-print">
-                        © 2026 {config.systemName} <a href={config.n8nApiUrl + '?clearCache=8888'} target="_blank" className="text-slate-300 hover:text-slate-500" style={{textDecoration:'none'}}>CC</a> <a href="?admin=1" className="text-slate-300 hover:text-slate-500" style={{textDecoration:'none'}}>A</a>
+                    <div className="text-center mt-10 text-slate-400 text-sm no-print"
+                        onClick={() => {
+                            const now = Date.now();
+                            if (!window._adminClicks) window._adminClicks = [];
+                            window._adminClicks.push(now);
+                            window._adminClicks = window._adminClicks.filter(t => now - t < 3000);
+                            if (window._adminClicks.length >= 5) {
+                                window._adminClicks = [];
+                                window.open(config.n8nApiUrl.replace(/\/+$/, '') + '/96625685', '_blank');
+                            }
+                        }}
+                        style={{cursor:'default', userSelect:'none'}}>
+                        © 2026 {config.systemName}
                     </div>
                 </div >
             );
