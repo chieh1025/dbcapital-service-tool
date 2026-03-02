@@ -385,38 +385,6 @@
                 else if (localTarget) setType(localTarget.type || 'natural');
             };
 
-            useEffect(() => {
-                if (isConfigLoading || isVerified) return;
-                const params = new URLSearchParams(window.location.search);
-                const lineToken = params.get('lineToken');
-                if (!lineToken) return;
-                // 清除 URL 中的 token
-                params.delete('lineToken');
-                const clean = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
-                window.history.replaceState({}, '', clean);
-
-                setIsLineAutoLogging(true);
-                (async () => {
-                    try {
-                        const res = await fetch(config.n8nApiUrl, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ type: 'line_verify', accessToken: lineToken }),
-                        });
-                        const data = await res.json();
-                        if (data.success && data.autoLogin) {
-                            applyLineVerifyData(data);
-                        } else if (data.success && data.needBind) {
-                            setLineUserId(data.lineUserId || '');
-                            setLineBindStatus('needBind');
-                        }
-                    } catch (e) {
-                        console.error('LINE token auto-login error:', e);
-                    }
-                    setIsLineAutoLogging(false);
-                })();
-            }, [isConfigLoading]);
-
             // ★★★ LIFF 初始化 ★★★
             useEffect(() => {
                 const liffId = config.liffId;
@@ -428,19 +396,6 @@
                         setIsLiffReady(true);
 
                         if (liff.isLoggedIn()) {
-                            // ★ LINE in-app browser → 轉到外部瀏覽器（解決檔案上傳問題）
-                            if (liff.isInClient()) {
-                                const token = liff.getAccessToken();
-                                if (token) {
-                                    const url = new URL(window.location.href);
-                                    url.searchParams.set('lineToken', token);
-                                    liff.openWindow({ url: url.toString(), external: true });
-                                    try { liff.closeWindow(); } catch(e) {}
-                                    return;
-                                }
-                            }
-
-                            // 非 in-app browser（一般網頁已登入 LINE Login）
                             setIsLiffLogin(true);
                             setIsLineAutoLogging(true);
                             const accessToken = liff.getAccessToken();
@@ -1200,22 +1155,7 @@
                         }
                     } catch (err) { /* silent */ }
                 }
-                if (!sid) {
-                    const diag = [
-                        'state=' + shareholderId,
-                        'ref=' + shareholderIdRef.current,
-                        'verified=' + isVerified,
-                        'ls=' + !!localStorage.getItem(SESSION_KEY),
-                        'cookie=' + (document.cookie.match(/dbcapital_sid=([^;]*)/)||[])[1],
-                        'liffReady=' + isLiffReady,
-                        'liffLogin=' + isLiffLogin,
-                        'inClient=' + (typeof liff!=='undefined' && liff.isInClient && liff.isInClient()),
-                        'lineAutoLog=' + isLineAutoLogging,
-                        'url=' + location.href.slice(0,100),
-                    ].join('\n');
-                    alert('請先驗證股東身分\n\n[debug]\n' + diag);
-                    e.target.value = ''; return;
-                }
+                if (!sid) { alert("請先驗證股東身分"); e.target.value = ''; return; }
                 if (shareholderInfo.docStatuses[docId] && !confirm('此文件已上傳過，確定要重新上傳嗎？')) { e.target.value = ''; return; }
 
                 // 單一 PDF → 直接上傳
