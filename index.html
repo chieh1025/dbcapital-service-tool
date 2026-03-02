@@ -487,6 +487,8 @@
             // --- 核心資料 for 股東 ---
             const [name, setName] = useState('');
             const [shareholderId, setShareholderId] = useState('');
+            const shareholderIdRef = useRef('');
+            useEffect(() => { shareholderIdRef.current = shareholderId; }, [shareholderId]);
             const [shareholderInfo, setShareholderInfo] = useState({
                 idNumber: '', birthDate: '', nationality: '', address: '', phone: '', representative: '', docConfirmed: {}, docStatuses: {}, docRejected: {}, docRejectReasons: {}
             });
@@ -1108,7 +1110,8 @@
             const handleFileUpload = async (e, docId) => {
                 const files = Array.from(e.target.files);
                 if (!files.length) { e.target.value = ''; return; }
-                if (!shareholderId) { alert("請先選擇股東身分！"); return; }
+                const sid = shareholderIdRef.current || shareholderId;
+                if (!sid) { alert("請先選擇股東身分！"); return; }
                 if (shareholderInfo.docStatuses[docId] && !confirm('此文件已上傳過，確定要重新上傳嗎？')) { e.target.value = ''; return; }
 
                 // 單一 PDF → 直接上傳
