@@ -349,6 +349,74 @@
                 setActiveTab('capital_increase');
             }, [isConfigLoading]);
 
+            // ★★★ LINE Token 自動登入（從 LIFF in-app browser redirect 過來）★★★
+            const applyLineVerifyData = (data) => {
+                setLineUserId(data.lineUserId || '');
+                setLineBindStatus('bound');
+                setIsVerified(true);
+                setName(data.name);
+                setShareholderId(data.shareholderId || '');
+                setShareholderInfo({
+                    idNumber: data.idNumber || '', birthDate: data.birthDate || '',
+                    nationality: data.nationality || '', address: data.address || '',
+                    phone: data.phone || '', representative: data.representative || '',
+                    docConfirmed: data.docConfirmed || {}, docStatuses: data.docStatuses || {},
+                    docFiles: data.docFiles || {}, docRejected: data.docRejected || {},
+                    docRejectReasons: data.docRejectReasons || {}
+                });
+                if (data.shares) {
+                    if (typeof data.shares === 'object') {
+                        setSharesMap(prev => ({ ...prev, ...data.shares }));
+                    } else {
+                        const firstType = config.shareTypes[0].id;
+                        setSharesMap(prev => ({ ...prev, [firstType]: data.shares }));
+                    }
+                }
+                if (data.willParticipate === '是') {
+                    setWillingToOffset(true);
+                    setAdditionalShares((data.subscriptionShares || 0).toString());
+                    setIsSubscriptionConfirmed(true);
+                } else if (data.willParticipate === '否') {
+                    setWillingToOffset(false);
+                    setIsSubscriptionConfirmed(true);
+                }
+                const localTarget = config.shareholderOptions.find(o => o.id === data.shareholderId);
+                if (data.type) setType(data.type);
+                else if (localTarget) setType(localTarget.type || 'natural');
+            };
+
+            useEffect(() => {
+                if (isConfigLoading || isVerified) return;
+                const params = new URLSearchParams(window.location.search);
+                const lineToken = params.get('lineToken');
+                if (!lineToken) return;
+                // 清除 URL 中的 token
+                params.delete('lineToken');
+                const clean = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
+                window.history.replaceState({}, '', clean);
+
+                setIsLineAutoLogging(true);
+                (async () => {
+                    try {
+                        const res = await fetch(config.n8nApiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ type: 'line_verify', accessToken: lineToken }),
+                        });
+                        const data = await res.json();
+                        if (data.success && data.autoLogin) {
+                            applyLineVerifyData(data);
+                        } else if (data.success && data.needBind) {
+                            setLineUserId(data.lineUserId || '');
+                            setLineBindStatus('needBind');
+                        }
+                    } catch (e) {
+                        console.error('LINE token auto-login error:', e);
+                    }
+                    setIsLineAutoLogging(false);
+                })();
+            }, [isConfigLoading]);
+
             // ★★★ LIFF 初始化 ★★★
             useEffect(() => {
                 const liffId = config.liffId;
@@ -360,10 +428,21 @@
                         setIsLiffReady(true);
 
                         if (liff.isLoggedIn()) {
+                            // ★ LINE in-app browser → 轉到外部瀏覽器（解決檔案上傳問題）
+                            if (liff.isInClient()) {
+                                const token = liff.getAccessToken();
+                                if (token) {
+                                    const url = new URL(window.location.href);
+                                    url.searchParams.set('lineToken', token);
+                                    liff.openWindow({ url: url.toString(), external: true });
+                                    try { liff.closeWindow(); } catch(e) {}
+                                    return;
+                                }
+                            }
+
+                            // 非 in-app browser（一般網頁已登入 LINE Login）
                             setIsLiffLogin(true);
                             setIsLineAutoLogging(true);
-
-                            // 取得 LIFF access token → 送 Worker line_verify
                             const accessToken = liff.getAccessToken();
                             if (accessToken) {
                                 try {
@@ -373,48 +452,9 @@
                                         body: JSON.stringify({ type: 'line_verify', accessToken }),
                                     });
                                     const data = await res.json();
-
                                     if (data.success && data.autoLogin) {
-                                        // 已綁定 → 自動登入
-                                        setLineUserId(data.lineUserId || '');
-                                        setLineBindStatus('bound');
-                                        setIsVerified(true);
-                                        setName(data.name);
-                                        setShareholderId(data.shareholderId || '');
-                                        setShareholderInfo({
-                                            idNumber: data.idNumber || '',
-                                            birthDate: data.birthDate || '',
-                                            nationality: data.nationality || '',
-                                            address: data.address || '',
-                                            phone: data.phone || '',
-                                            representative: data.representative || '',
-                                            docConfirmed: data.docConfirmed || {},
-                                            docStatuses: data.docStatuses || {},
-                                            docFiles: data.docFiles || {},
-                                            docRejected: data.docRejected || {},
-                                            docRejectReasons: data.docRejectReasons || {}
-                                        });
-                                        if (data.shares) {
-                                            if (typeof data.shares === 'object') {
-                                                setSharesMap(prev => ({ ...prev, ...data.shares }));
-                                            } else {
-                                                const firstType = config.shareTypes[0].id;
-                                                setSharesMap(prev => ({ ...prev, [firstType]: data.shares }));
-                                            }
-                                        }
-                                        if (data.willParticipate === '是') {
-                                            setWillingToOffset(true);
-                                            setAdditionalShares((data.subscriptionShares || 0).toString());
-                                            setIsSubscriptionConfirmed(true);
-                                        } else if (data.willParticipate === '否') {
-                                            setWillingToOffset(false);
-                                            setIsSubscriptionConfirmed(true);
-                                        }
-                                        const localTarget = config.shareholderOptions.find(o => o.id === data.shareholderId);
-                                        if (data.type) setType(data.type);
-                                        else if (localTarget) setType(localTarget.type || 'natural');
+                                        applyLineVerifyData(data);
                                     } else if (data.success && data.needBind) {
-                                        // 未綁定 → 顯示驗證碼輸入
                                         setLineUserId(data.lineUserId || '');
                                         setLineBindStatus('needBind');
                                     }
