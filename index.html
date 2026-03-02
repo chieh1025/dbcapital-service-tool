@@ -348,6 +348,7 @@
                 if (s.isSubscriptionConfirmed) setIsSubscriptionConfirmed(true);
                 setIsVerified(true);
                 setActiveTab('capital_increase');
+                startHeartbeat(s.shareholderId, s.name || '', s.type || 'natural');
             }, [isConfigLoading]);
 
             // ★★★ LINE Token 自動登入（從 LIFF in-app browser redirect 過來）★★★
@@ -382,8 +383,10 @@
                     setIsSubscriptionConfirmed(true);
                 }
                 const localTarget = config.shareholderOptions.find(o => o.id === data.shareholderId);
+                const resolvedType = data.type || (localTarget ? localTarget.type : 'natural') || 'natural';
                 if (data.type) setType(data.type);
                 else if (localTarget) setType(localTarget.type || 'natural');
+                startHeartbeat(data.shareholderId || '', data.name || '', resolvedType);
             };
 
             // ★★★ LIFF 初始化 ★★★
@@ -589,6 +592,7 @@
 
             // ★★★ 登出函數 ★★★
             const handleLogout = () => {
+                stopHeartbeat();
                 setIsVerified(false);
                 setShareholderId('');
                 setName('');
@@ -644,6 +648,31 @@
                 };
             }, [isVerified]);
 
+            // ★★★ 心跳機制（追蹤上線狀態 + 偵測踢下線）★★★
+            const heartbeatRef = useRef(null);
+
+            const startHeartbeat = (sid, n, t) => {
+                stopHeartbeat();
+                const beat = () => {
+                    fetch(config.n8nApiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ type: 'heartbeat', shareholderId: sid, name: n, shareholderType: t })
+                    }).then(r => r.json()).then(d => {
+                        if (d.kicked) {
+                            alert('您已被管理員強制登出。' + (d.reason ? '\n原因：' + d.reason : ''));
+                            handleLogout();
+                        }
+                    }).catch(() => {});
+                };
+                beat();
+                heartbeatRef.current = setInterval(beat, 60000);
+            };
+
+            const stopHeartbeat = () => {
+                if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
+            };
+
             // ★★★ Tab Focus 自動重新載入 config ★★★
             const [configVer, setConfigVer] = useState(0);
             useEffect(() => {
@@ -695,6 +724,7 @@
                         if (s.sharesMap) setSharesMap(prev => ({ ...prev, ...s.sharesMap }));
                         setIsVerified(true);
                         setActiveTab('capital_increase');
+                        startHeartbeat(s.shareholderId, s.name || '', s.type || 'natural');
                     }
                 };
                 document.addEventListener('visibilitychange', handleResume);
@@ -769,11 +799,13 @@
 
                             // ★★★ Fix: Ensure type is set correctly based on local config or backend response ★★★
                             const localTarget = config.shareholderOptions.find(o => o.id === shareholderId);
+                            const resolvedType = data.type || (localTarget ? localTarget.type : 'natural') || 'natural';
                             if (data.type) {
                                 setType(data.type);
                             } else if (localTarget) {
                                 setType(localTarget.type || 'natural');
                             }
+                            startHeartbeat(shareholderId, data.name, resolvedType);
                         } else {
                             alert("驗證失敗：驗證碼錯誤或系統無此資料。");
                             setInputVerifyCode('');
@@ -792,6 +824,7 @@
                         setType(target?.type || 'natural');
 
                         setSharesMap({ voting_shares: "2", preferred_yi: "0" });
+                        startHeartbeat(shareholderId, target ? target.label.split(' ')[1] : "測試股東", target?.type || 'natural');
                         alert("【測試模式】驗證成功！");
                     } else {
                         alert("【測試模式】驗證碼錯誤 (測試碼: 1196)");
@@ -912,12 +945,12 @@
                     setDocGenResults(prev => ({ ...prev, [docId]: data }));
 
                     if (data.success) {
-                        // 即時更新 docFiles + docStatuses
+                        // 即時更新 docFiles；只有簽名/用印才更新 docStatuses
                         const nowStr = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
                         setShareholderInfo(prev => ({
                             ...prev,
                             docFiles: { ...prev.docFiles, ...(data.key ? { [docId]: data.key } : {}) },
-                            docStatuses: { ...prev.docStatuses, [docId]: nowStr }
+                            ...(options.isSigned ? { docStatuses: { ...prev.docStatuses, [docId]: nowStr } } : {})
                         }));
                         return data;
                     } else {
@@ -1945,10 +1978,16 @@
                                                                             </div>
                                                                         </div>
                                                                         <div className="flex items-center gap-3">
-                                                                            {shareholderInfo.docStatuses[doc.id] && (
-                                                                                <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-bold whitespace-nowrap">
-                                                                                    <i className="fas fa-check-circle mr-1"></i>已繳交 {shareholderInfo.docStatuses[doc.id]}
-                                                                                </span>
+                                                                            {shareholderInfo.docStatuses[doc.id] && !shareholderInfo.docConfirmed[doc.id] && !shareholderInfo.docRejected[doc.id] && (
+                                                                                doc.id === 'doc_offset' ? (
+                                                                                    <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded-full font-bold whitespace-nowrap">
+                                                                                        <i className="fas fa-file-alt mr-1"></i>缺正本
+                                                                                    </span>
+                                                                                ) : (
+                                                                                    <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-bold whitespace-nowrap">
+                                                                                        <i className="fas fa-check-circle mr-1"></i>已繳交 {shareholderInfo.docStatuses[doc.id]}
+                                                                                    </span>
+                                                                                )
                                                                             )}
                                                                             {shareholderInfo.docConfirmed[doc.id] && !shareholderInfo.docRejected[doc.id] && (
                                                                                 <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-bold whitespace-nowrap">
