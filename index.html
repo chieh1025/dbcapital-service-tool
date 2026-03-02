@@ -319,6 +319,69 @@
                 loadConfig();
             }, []);
 
+            // ★★★ Session 恢復（手機開相機後頁面被回收時自動重新驗證）★★★
+            useEffect(() => {
+                if (isConfigLoading || isVerified) return;
+                const saved = sessionStorage.getItem('dbcapital_session');
+                if (!saved) return;
+                try {
+                    const { shareholderId: sid, verifyCode } = JSON.parse(saved);
+                    if (!sid || !verifyCode) return;
+                    // 靜默重新驗證
+                    (async () => {
+                        try {
+                            setShareholderId(sid);
+                            setInputVerifyCode(verifyCode);
+                            const res = await fetch(config.n8nApiUrl, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ type: 'verify', shareholderId: sid, code: verifyCode })
+                            });
+                            const data = await res.json();
+                            if (data.success) {
+                                setIsVerified(true);
+                                setName(data.name);
+                                setShareholderInfo({
+                                    idNumber: data.idNumber || '', birthDate: data.birthDate || '',
+                                    nationality: data.nationality || '', address: data.address || '',
+                                    phone: data.phone || '', representative: data.representative || '',
+                                    docConfirmed: data.docConfirmed || {}, docStatuses: data.docStatuses || {},
+                                    docFiles: data.docFiles || {}, docRejected: data.docRejected || {},
+                                    docRejectReasons: data.docRejectReasons || {}
+                                });
+                                if (data.shares) {
+                                    if (typeof data.shares === 'object') {
+                                        setSharesMap(prev => ({ ...prev, ...data.shares }));
+                                    } else {
+                                        const firstType = config.shareTypes[0].id;
+                                        setSharesMap(prev => ({ ...prev, [firstType]: data.shares }));
+                                    }
+                                }
+                                if (data.willParticipate === '是') {
+                                    setWillingToOffset(true);
+                                    setAdditionalShares((data.subscriptionShares || 0).toString());
+                                    setIsSubscriptionConfirmed(true);
+                                } else if (data.willParticipate === '否') {
+                                    setWillingToOffset(false);
+                                    setIsSubscriptionConfirmed(true);
+                                }
+                                const localTarget = config.shareholderOptions.find(o => o.id === sid);
+                                if (data.type) setType(data.type);
+                                else if (localTarget) setType(localTarget.type || 'natural');
+                                setActiveTab('capital_increase');
+                            } else {
+                                sessionStorage.removeItem('dbcapital_session');
+                            }
+                        } catch (e) {
+                            console.error('Session restore failed:', e);
+                            sessionStorage.removeItem('dbcapital_session');
+                        }
+                    })();
+                } catch (e) {
+                    sessionStorage.removeItem('dbcapital_session');
+                }
+            }, [isConfigLoading]);
+
             // ★★★ LIFF 初始化 ★★★
             useEffect(() => {
                 const liffId = config.liffId;
@@ -691,6 +754,11 @@
                                 setWillingToOffset(false);
                                 setIsSubscriptionConfirmed(true);
                             }
+
+                            // ★ Session 持久化（防手機開相機後頁面被回收）
+                            sessionStorage.setItem('dbcapital_session', JSON.stringify({
+                                shareholderId, verifyCode: inputVerifyCode
+                            }));
 
                             // ★ LINE 綁定成功提示
                             if (lineUserId) {
