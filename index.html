@@ -502,6 +502,17 @@
             const [isProcessing, setIsProcessing] = useState(false);
             const [isCapturing, setIsCapturing] = useState(false);
 
+            // ★★★ 簽名後自動重新載入預覽（帶簽名圖）★★★
+            const sigPreviewTimer = useRef(null);
+            useEffect(() => {
+                if (!signatureImg || !expandedDocId || expandedDocId === 'charter') return;
+                clearTimeout(sigPreviewTimer.current);
+                sigPreviewTimer.current = setTimeout(() => {
+                    handlePreviewDoc(expandedDocId, { signatureImage: signatureImg });
+                }, 400);
+                return () => clearTimeout(sigPreviewTimer.current);
+            }, [signatureImg]);
+
             // Tab 4: 股東會功能狀態
             const [checkinStatus, setCheckinStatus] = useState(null); // null | 'online' | 'physical'
             const [votes, setVotes] = useState({}); // { proposal_id: 'agree'|'oppose'|'abstain' }
@@ -856,7 +867,7 @@
             };
 
             // ★★★ B1: 預覽用 — 呼叫 Worker (skipPdf) 拿 n8n HTML ★★★
-            const handlePreviewDoc = async (docId) => {
+            const handlePreviewDoc = async (docId, options = {}) => {
                 if (!shareholderId || !config.n8nApiUrl) return;
                 setPreviewLoading(prev => ({ ...prev, [docId]: true }));
                 try {
@@ -881,7 +892,8 @@
                         subscriptionPrice: config.subscriptionPrice || 160000,
                         fundSources: fundSources,
                         docDate: (docId === 'doc_offset' && config.docFixedDate) ? config.docFixedDate : getClampedDocDate(),
-                        docFixedDate: config.docFixedDate || ''
+                        docFixedDate: config.docFixedDate || '',
+                        ...(options.signatureImage ? { signatureImage: options.signatureImage } : {})
                     };
                     const res = await fetch(config.n8nApiUrl, {
                         method: 'POST',
