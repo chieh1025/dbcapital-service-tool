@@ -606,6 +606,7 @@
                 setPreviewHtmlMap({});
                 setDocGenResults({});
                 localStorage.removeItem(SESSION_KEY);
+                document.cookie = 'dbcapital_sid=; max-age=0; path=/';
             };
 
 
@@ -617,6 +618,8 @@
                         willingToOffset, additionalShares, isSubscriptionConfirmed,
                         savedAt: Date.now(),
                     }));
+                    // Cookie fallback（LINE in-app browser 可能清 localStorage 但保留 cookie）
+                    document.cookie = `dbcapital_sid=${shareholderId}; max-age=1800; path=/; SameSite=Lax`;
                 }
             }, [isVerified, shareholderId, name, type, shareholderInfo, willingToOffset, additionalShares, isSubscriptionConfirmed]);
 
@@ -1108,7 +1111,7 @@
                 const files = Array.from(e.target.files);
                 if (!files.length) { e.target.value = ''; return; }
                 let sid = shareholderIdRef.current || shareholderId;
-                // localStorage fallback（LINE in-app browser 頁面回收後 React state 可能遺失）
+                // Fallback 1: localStorage
                 if (!sid) {
                     const s = getSavedSession();
                     if (s) {
@@ -1122,6 +1125,40 @@
                             setIsVerified(true);
                         }
                     }
+                }
+                // Fallback 2: cookie
+                if (!sid) {
+                    const m = document.cookie.match(/dbcapital_sid=([^;]+)/);
+                    if (m && m[1]) sid = m[1];
+                }
+                // Fallback 3: LIFF re-auth（所有 storage 都被清，但 LINE 仍登入）
+                if (!sid && typeof liff !== 'undefined' && liff.isLoggedIn()) {
+                    try {
+                        const token = liff.getAccessToken();
+                        if (token) {
+                            const res = await fetch(config.n8nApiUrl, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ type: 'line_verify', accessToken: token }),
+                            });
+                            const data = await res.json();
+                            if (data.success && data.autoLogin && data.shareholderId) {
+                                sid = String(data.shareholderId);
+                                shareholderIdRef.current = sid;
+                                setShareholderId(sid);
+                                setName(data.name || '');
+                                setIsVerified(true);
+                                setShareholderInfo({
+                                    idNumber: data.idNumber || '', birthDate: data.birthDate || '',
+                                    nationality: data.nationality || '', address: data.address || '',
+                                    phone: data.phone || '', representative: data.representative || '',
+                                    docConfirmed: data.docConfirmed || {}, docStatuses: data.docStatuses || {},
+                                    docFiles: data.docFiles || {}, docRejected: data.docRejected || {},
+                                    docRejectReasons: data.docRejectReasons || {}
+                                });
+                            }
+                        }
+                    } catch (err) { /* silent */ }
                 }
                 if (!sid) { alert("請先驗證股東身分"); e.target.value = ''; return; }
                 if (shareholderInfo.docStatuses[docId] && !confirm('此文件已上傳過，確定要重新上傳嗎？')) { e.target.value = ''; return; }
