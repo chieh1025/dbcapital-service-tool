@@ -809,6 +809,7 @@
                         subscriptionPrice: config.subscriptionPrice || 160000,
                         fundSources: fundSources,
                         docDate: (docId === 'doc_offset' && config.docFixedDate) ? config.docFixedDate : getClampedDocDate(),
+                        docFixedDate: config.docFixedDate || '',
                         // 簽名圖（簽核版才帶）
                         ...(options.signatureImage ? { signatureImage: options.signatureImage } : {}),
                         // 標記是否為簽核版
@@ -872,7 +873,8 @@
                         totalCost: result?.totalCost || 0,
                         subscriptionPrice: config.subscriptionPrice || 160000,
                         fundSources: fundSources,
-                        docDate: (docId === 'doc_offset' && config.docFixedDate) ? config.docFixedDate : getClampedDocDate()
+                        docDate: (docId === 'doc_offset' && config.docFixedDate) ? config.docFixedDate : getClampedDocDate(),
+                        docFixedDate: config.docFixedDate || ''
                     };
                     const res = await fetch(config.n8nApiUrl, {
                         method: 'POST',
@@ -1887,16 +1889,18 @@
                                                                                                         <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800 border border-yellow-200">
                                                                                                             <i className="fas fa-info-circle mr-1"></i>請先下載文件，列印簽名後再上傳
                                                                                                         </div>
-                                                                                                        <button onClick={() => handleGeneratePDF('download', doc.id)} className="w-full border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center shadow-sm">
-                                                                                                            <i className="fas fa-download mr-2"></i>下載 PDF
-                                                                                                        </button>
-                                                                                                        <div className="space-y-2 pt-2">
-                                                                                                            <button onClick={() => document.getElementById(`file-upload-${doc.id}`).click()} className="w-full border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
+                                                                                                        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                                                                                                            <button onClick={() => handleGeneratePDF('download', doc.id)} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center shadow-sm">
+                                                                                                                <i className="fas fa-download mr-2"></i>下載 PDF
+                                                                                                            </button>
+                                                                                                            <button onClick={() => document.getElementById(`file-upload-${doc.id}`).click()} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
                                                                                                                 <i className="fas fa-file-upload"></i><span>選擇檔案上傳</span>
                                                                                                             </button>
-                                                                                                            <button onClick={() => document.getElementById(`camera-upload-${doc.id}`).click()} className="w-full border border-green-300 text-green-700 py-3 rounded-lg font-bold hover:bg-green-50 transition flex items-center justify-center gap-2">
+                                                                                                            <button onClick={() => document.getElementById(`camera-upload-${doc.id}`).click()} className="flex-1 border border-green-300 text-green-700 py-3 rounded-lg font-bold hover:bg-green-50 transition flex items-center justify-center gap-2">
                                                                                                                 <i className="fas fa-camera"></i><span>拍照上傳</span>
                                                                                                             </button>
+                                                                                                        </div>
+                                                                                                        <div>
                                                                                                             <input id={`file-upload-${doc.id}`} type="file" accept="image/*,application/pdf" multiple onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
                                                                                                             <input id={`camera-upload-${doc.id}`} type="file" accept="image/*" capture="environment" onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
                                                                                                             <p className="text-xs text-slate-400 text-center">支援 PDF、JPG、PNG，可選多張圖片合併</p>
@@ -1931,16 +1935,18 @@
                                                                                             <div className="bg-yellow-50 p-3 rounded-lg text-sm text-yellow-800 border border-yellow-200">
                                                                                                 <i className="fas fa-info-circle mr-1"></i>請下載文件，蓋大小章後上傳
                                                                                             </div>
-                                                                                            <button onClick={() => handleGeneratePDF('download', doc.id)} className="w-full border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center shadow-sm">
-                                                                                                <i className="fas fa-download mr-2"></i>下載 PDF
-                                                                                            </button>
-                                                                                            <div className="space-y-2 pt-2">
-                                                                                                <button onClick={() => document.getElementById(`file-upload-${doc.id}`).click()} className="w-full border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
+                                                                                            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                                                                                                <button onClick={() => handleGeneratePDF('download', doc.id)} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center shadow-sm">
+                                                                                                    <i className="fas fa-download mr-2"></i>下載 PDF
+                                                                                                </button>
+                                                                                                <button onClick={() => document.getElementById(`file-upload-${doc.id}`).click()} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
                                                                                                     <i className="fas fa-file-upload"></i><span>選擇檔案</span>
                                                                                                 </button>
-                                                                                                <button onClick={() => document.getElementById(`camera-upload-${doc.id}`).click()} className="w-full border border-green-300 text-green-700 py-3 rounded-lg font-bold hover:bg-green-50 transition flex items-center justify-center gap-2">
+                                                                                                <button onClick={() => document.getElementById(`camera-upload-${doc.id}`).click()} className="flex-1 border border-green-300 text-green-700 py-3 rounded-lg font-bold hover:bg-green-50 transition flex items-center justify-center gap-2">
                                                                                                     <i className="fas fa-camera"></i><span>拍照上傳</span>
                                                                                                 </button>
+                                                                                            </div>
+                                                                                            <div>
                                                                                                 <input id={`file-upload-${doc.id}`} type="file" accept="image/*,application/pdf" multiple onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
                                                                                                 <input id={`camera-upload-${doc.id}`} type="file" accept="image/*" capture="environment" onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
                                                                                                 <p className="text-xs text-slate-400 text-center">支援 PDF、JPG、PNG，可選多張圖片合併</p>
@@ -1968,15 +1974,17 @@
                                                                                 </>}
                                                                                     {/* paper_only (doc_offset) → 只有下載 + 提示繳回正本 */}
                                                                                     {isPaperOnly && (
-                                                                                        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
-                                                                                            <button onClick={() => handleGeneratePDF('download', doc.id)} className="w-full border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center shadow-sm">
-                                                                                                <i className="fas fa-download mr-2"></i>下載 PDF
-                                                                                            </button>
-                                                                                            {isMobile && (
-                                                                                            <button onClick={() => handleGeneratePDF('share', doc.id)} className="w-full bg-[#06C755] text-white py-3 rounded-lg font-bold hover:bg-[#05b54d] transition flex items-center justify-center shadow-sm">
-                                                                                                <i className="fab fa-line mr-2"></i>Line 分享
-                                                                                            </button>
-                                                                                            )}
+                                                                                        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                                                                                            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                                                                                                <button onClick={() => handleGeneratePDF('download', doc.id)} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center shadow-sm">
+                                                                                                    <i className="fas fa-download mr-2"></i>下載 PDF
+                                                                                                </button>
+                                                                                                {isMobile && (
+                                                                                                <button onClick={() => handleGeneratePDF('share', doc.id)} className="flex-1 bg-[#06C755] text-white py-3 rounded-lg font-bold hover:bg-[#05b54d] transition flex items-center justify-center shadow-sm">
+                                                                                                    <i className="fab fa-line mr-2"></i>Line 分享
+                                                                                                </button>
+                                                                                                )}
+                                                                                            </div>
                                                                                         </div>
                                                                                     )}
 
