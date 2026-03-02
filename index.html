@@ -1799,8 +1799,8 @@
                                                                 }
                                                             };
 
-                                                            return (
-                                                                <div key={doc.id} className={`border rounded-xl overflow-hidden transition-all ${isExpanded ? 'border-blue-500 shadow-lg' : 'border-slate-200 bg-white hover:border-blue-300'}`}>
+                                                            return (<React.Fragment key={doc.id}>
+                                                                <div className={`border rounded-xl overflow-hidden transition-all ${isExpanded ? 'border-blue-500 shadow-lg' : 'border-slate-200 bg-white hover:border-blue-300'}`}>
                                                                     <div onClick={handleExpand} className={`p-6 cursor-pointer flex justify-between items-center ${isExpanded ? 'bg-blue-50' : 'bg-white'}`}>
                                                                         <div className="flex items-center gap-4">
                                                                             <div className={`w-10 h-10 rounded-full flex items-center justify-center ${isExpanded ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
@@ -2075,7 +2075,35 @@
                                                                         </div>
                                                                     </div>
                                                                 </div>
-                                                            );
+                                                                {/* 附件一：公司章程（doc_invest 後面顯示） */}
+                                                                {doc.id === 'doc_invest' && (
+                                                                    <div className="border rounded-xl overflow-hidden border-indigo-200 bg-white mt-4">
+                                                                        <div onClick={() => setExpandedDocId(expandedDocId === 'charter' ? null : 'charter')} className={`p-6 cursor-pointer flex justify-between items-center ${expandedDocId === 'charter' ? 'bg-indigo-50' : 'bg-white'}`}>
+                                                                            <div className="flex items-center gap-4">
+                                                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${expandedDocId === 'charter' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-400'}`}>
+                                                                                    <i className="fas fa-book"></i>
+                                                                                </div>
+                                                                                <div>
+                                                                                    <h3 className={`font-bold text-lg ${expandedDocId === 'charter' ? 'text-indigo-800' : 'text-slate-700'}`}>附件一：公司章程</h3>
+                                                                                    <p className="text-xs text-slate-500">達飆資本股份有限公司章程</p>
+                                                                                </div>
+                                                                            </div>
+                                                                            <i className={`fas fa-chevron-down transition-transform ${expandedDocId === 'charter' ? 'rotate-180 text-indigo-600' : 'text-slate-300'}`}></i>
+                                                                        </div>
+                                                                        {expandedDocId === 'charter' && (
+                                                                            <div className="border-t border-indigo-200">
+                                                                                <iframe
+                                                                                    src="https://drive.google.com/file/d/1AnJ-jR_Vb8FBF_kNY3rSlOznY5gwOHwb/preview"
+                                                                                    className="w-full border-0"
+                                                                                    style={{ height: 'min(700px, 80vh)' }}
+                                                                                    title="公司章程"
+                                                                                    allow="autoplay"
+                                                                                />
+                                                                            </div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </React.Fragment>);
                                                         })}
 
                                                         {/* ★★★ 匯款憑證上傳卡片 ★★★ */}
