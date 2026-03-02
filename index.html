@@ -320,26 +320,33 @@
             }, []);
 
             // ★★★ Session 恢復（手機開相機後頁面被回收時即時還原）★★★
+            const SESSION_KEY = 'dbcapital_session';
+            const SESSION_MAX_AGE = 30 * 60 * 1000; // 30 分鐘
+
+            const getSavedSession = () => {
+                try {
+                    const raw = localStorage.getItem(SESSION_KEY);
+                    if (!raw) return null;
+                    const s = JSON.parse(raw);
+                    if (!s.shareholderId || !s.savedAt) { localStorage.removeItem(SESSION_KEY); return null; }
+                    if (Date.now() - s.savedAt > SESSION_MAX_AGE) { localStorage.removeItem(SESSION_KEY); return null; }
+                    return s;
+                } catch { localStorage.removeItem(SESSION_KEY); return null; }
+            };
+
             useEffect(() => {
                 if (isConfigLoading || isVerified) return;
-                const saved = sessionStorage.getItem('dbcapital_session');
-                if (!saved) return;
-                try {
-                    const s = JSON.parse(saved);
-                    if (!s.shareholderId) { sessionStorage.removeItem('dbcapital_session'); return; }
-                    // 即時還原狀態（不需 API call）
-                    setShareholderId(s.shareholderId);
-                    setName(s.name || '');
-                    setType(s.type || 'natural');
-                    if (s.shareholderInfo) setShareholderInfo(s.shareholderInfo);
-                    if (s.willingToOffset != null) setWillingToOffset(s.willingToOffset);
-                    if (s.additionalShares != null) setAdditionalShares(s.additionalShares);
-                    if (s.isSubscriptionConfirmed) setIsSubscriptionConfirmed(true);
-                    setIsVerified(true);
-                    setActiveTab('capital_increase');
-                } catch (e) {
-                    sessionStorage.removeItem('dbcapital_session');
-                }
+                const s = getSavedSession();
+                if (!s) return;
+                setShareholderId(s.shareholderId);
+                setName(s.name || '');
+                setType(s.type || 'natural');
+                if (s.shareholderInfo) setShareholderInfo(s.shareholderInfo);
+                if (s.willingToOffset != null) setWillingToOffset(s.willingToOffset);
+                if (s.additionalShares != null) setAdditionalShares(s.additionalShares);
+                if (s.isSubscriptionConfirmed) setIsSubscriptionConfirmed(true);
+                setIsVerified(true);
+                setActiveTab('capital_increase');
             }, [isConfigLoading]);
 
             // ★★★ LIFF 初始化 ★★★
@@ -598,16 +605,17 @@
                 setLineBindStatus('');
                 setPreviewHtmlMap({});
                 setDocGenResults({});
-                sessionStorage.removeItem('dbcapital_session');
+                localStorage.removeItem(SESSION_KEY);
             };
 
 
             // ★★★ 持續保持 session（防手機開相機頁面被回收）★★★
             useEffect(() => {
                 if (isVerified && shareholderId) {
-                    sessionStorage.setItem('dbcapital_session', JSON.stringify({
+                    localStorage.setItem(SESSION_KEY, JSON.stringify({
                         shareholderId, name, type, shareholderInfo,
                         willingToOffset, additionalShares, isSubscriptionConfirmed,
+                        savedAt: Date.now(),
                     }));
                 }
             }, [isVerified, shareholderId, name, type, shareholderInfo, willingToOffset, additionalShares, isSubscriptionConfirmed]);
@@ -669,6 +677,29 @@
                 document.addEventListener('visibilitychange', handleVisibility);
                 return () => document.removeEventListener('visibilitychange', handleVisibility);
             }, []);
+
+            // ★★★ 頁面恢復時自動還原 session（防 LINE in-app browser 回收）★★★
+            useEffect(() => {
+                const handleResume = () => {
+                    if (document.visibilityState !== 'visible') return;
+                    if (isVerified && shareholderIdRef.current) return; // 已正常
+                    const s = getSavedSession();
+                    if (!s) return;
+                    if (!shareholderIdRef.current) {
+                        setShareholderId(s.shareholderId);
+                        shareholderIdRef.current = s.shareholderId;
+                    }
+                    if (!isVerified) {
+                        setName(s.name || '');
+                        setType(s.type || 'natural');
+                        if (s.shareholderInfo) setShareholderInfo(s.shareholderInfo);
+                        setIsVerified(true);
+                        setActiveTab('capital_increase');
+                    }
+                };
+                document.addEventListener('visibilitychange', handleResume);
+                return () => document.removeEventListener('visibilitychange', handleResume);
+            }, [isVerified]);
 
             const handleVerifyIdentity = async () => {
                 if (!shareholderId) return;
@@ -1076,8 +1107,23 @@
             const handleFileUpload = async (e, docId) => {
                 const files = Array.from(e.target.files);
                 if (!files.length) { e.target.value = ''; return; }
-                const sid = shareholderIdRef.current || shareholderId;
-                if (!sid) { alert("請先選擇股東身分！"); return; }
+                let sid = shareholderIdRef.current || shareholderId;
+                // localStorage fallback（LINE in-app browser 頁面回收後 React state 可能遺失）
+                if (!sid) {
+                    const s = getSavedSession();
+                    if (s) {
+                        sid = s.shareholderId;
+                        shareholderIdRef.current = sid;
+                        setShareholderId(sid);
+                        if (!isVerified) {
+                            setName(s.name || '');
+                            setType(s.type || 'natural');
+                            if (s.shareholderInfo) setShareholderInfo(s.shareholderInfo);
+                            setIsVerified(true);
+                        }
+                    }
+                }
+                if (!sid) { alert("請先驗證股東身分"); e.target.value = ''; return; }
                 if (shareholderInfo.docStatuses[docId] && !confirm('此文件已上傳過，確定要重新上傳嗎？')) { e.target.value = ''; return; }
 
                 // 單一 PDF → 直接上傳
