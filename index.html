@@ -1200,7 +1200,22 @@
                         }
                     } catch (err) { /* silent */ }
                 }
-                if (!sid) { alert("請先驗證股東身分"); e.target.value = ''; return; }
+                if (!sid) {
+                    const diag = [
+                        'state=' + shareholderId,
+                        'ref=' + shareholderIdRef.current,
+                        'verified=' + isVerified,
+                        'ls=' + !!localStorage.getItem(SESSION_KEY),
+                        'cookie=' + (document.cookie.match(/dbcapital_sid=([^;]*)/)||[])[1],
+                        'liffReady=' + isLiffReady,
+                        'liffLogin=' + isLiffLogin,
+                        'inClient=' + (typeof liff!=='undefined' && liff.isInClient && liff.isInClient()),
+                        'lineAutoLog=' + isLineAutoLogging,
+                        'url=' + location.href.slice(0,100),
+                    ].join('\n');
+                    alert('請先驗證股東身分\n\n[debug]\n' + diag);
+                    e.target.value = ''; return;
+                }
                 if (shareholderInfo.docStatuses[docId] && !confirm('此文件已上傳過，確定要重新上傳嗎？')) { e.target.value = ''; return; }
 
                 // 單一 PDF → 直接上傳
