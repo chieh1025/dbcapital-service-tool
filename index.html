@@ -342,6 +342,7 @@
                 setName(s.name || '');
                 setType(s.type || 'natural');
                 if (s.shareholderInfo) setShareholderInfo(s.shareholderInfo);
+                if (s.sharesMap) setSharesMap(prev => ({ ...prev, ...s.sharesMap }));
                 if (s.willingToOffset != null) setWillingToOffset(s.willingToOffset);
                 if (s.additionalShares != null) setAdditionalShares(s.additionalShares);
                 if (s.isSubscriptionConfirmed) setIsSubscriptionConfirmed(true);
@@ -609,14 +610,14 @@
             useEffect(() => {
                 if (isVerified && shareholderId) {
                     localStorage.setItem(SESSION_KEY, JSON.stringify({
-                        shareholderId, name, type, shareholderInfo,
+                        shareholderId, name, type, shareholderInfo, sharesMap,
                         willingToOffset, additionalShares, isSubscriptionConfirmed,
                         savedAt: Date.now(),
                     }));
                     // Cookie fallback（LINE in-app browser 可能清 localStorage 但保留 cookie）
                     document.cookie = `dbcapital_sid=${shareholderId}; max-age=1800; path=/; SameSite=Lax`;
                 }
-            }, [isVerified, shareholderId, name, type, shareholderInfo, willingToOffset, additionalShares, isSubscriptionConfirmed]);
+            }, [isVerified, shareholderId, name, type, shareholderInfo, sharesMap, willingToOffset, additionalShares, isSubscriptionConfirmed]);
 
             // ★★★ 30 分鐘無操作自動登出 ★★★
             const SESSION_TIMEOUT = 30 * 60 * 1000;
@@ -691,6 +692,7 @@
                         setName(s.name || '');
                         setType(s.type || 'natural');
                         if (s.shareholderInfo) setShareholderInfo(s.shareholderInfo);
+                        if (s.sharesMap) setSharesMap(prev => ({ ...prev, ...s.sharesMap }));
                         setIsVerified(true);
                         setActiveTab('capital_increase');
                     }
