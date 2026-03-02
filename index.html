@@ -195,22 +195,25 @@
             useEffect(() => {
                 const canvas = canvasRef.current;
                 if (!canvas) return;
-                const ratio = Math.max(window.devicePixelRatio || 1, 1);
-                canvas.width = canvas.offsetWidth * ratio;
-                canvas.height = canvas.offsetHeight * ratio;
-                canvas.getContext("2d").scale(ratio, ratio);
+                const dpr = Math.max(window.devicePixelRatio || 1, 1);
+                canvas.width = canvas.offsetWidth * dpr;
+                canvas.height = canvas.offsetHeight * dpr;
                 const ctx = canvas.getContext('2d');
                 ctx.strokeStyle = "#000";
-                ctx.lineWidth = 2;
+                ctx.lineWidth = 2 * dpr;
                 ctx.lineCap = "round";
+                ctx.lineJoin = "round";
             }, []);
 
             const getPos = (e) => {
                 const canvas = canvasRef.current;
                 const rect = canvas.getBoundingClientRect();
-                const x = (e.clientX || e.touches[0].clientX) - rect.left;
-                const y = (e.clientY || e.touches[0].clientY) - rect.top;
-                return { x, y };
+                const clientX = e.clientX ?? e.touches[0].clientX;
+                const clientY = e.clientY ?? e.touches[0].clientY;
+                return {
+                    x: (clientX - rect.left) * (canvas.width / rect.width),
+                    y: (clientY - rect.top) * (canvas.height / rect.height),
+                };
             };
 
             const startDrawing = (e) => {
