@@ -642,6 +642,15 @@
             };
 
 
+            // ★★★ 持續保持 session（確保已驗證狀態一定有存）★★★
+            useEffect(() => {
+                if (isVerified && shareholderId && inputVerifyCode) {
+                    sessionStorage.setItem('dbcapital_session', JSON.stringify({
+                        shareholderId, verifyCode: inputVerifyCode
+                    }));
+                }
+            }, [isVerified, shareholderId, inputVerifyCode]);
+
             // ★★★ 30 分鐘無操作自動登出 ★★★
             const SESSION_TIMEOUT = 30 * 60 * 1000;
             const logoutTimerRef = useRef(null);
