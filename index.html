@@ -986,6 +986,7 @@
                     alert('請先勾選至少一項出資金額來源！');
                     return;
                 }
+                if (shareholderInfo.docConfirmed[targetDocId] && !shareholderInfo.docRejected[targetDocId]) { alert('此文件已被股務確認，無法重新產生。'); return; }
                 if (shareholderInfo.docStatuses[targetDocId] && !confirm('此文件已簽核過，確定要重新產生嗎？')) return;
                 setIsProcessing(true);
                 try {
@@ -1156,6 +1157,7 @@
                     } catch (err) { /* silent */ }
                 }
                 if (!sid) { alert("請先驗證股東身分"); e.target.value = ''; return; }
+                if (shareholderInfo.docConfirmed[docId] && !shareholderInfo.docRejected[docId]) { alert('此文件已被股務確認，無法重新上傳。'); e.target.value = ''; return; }
                 if (shareholderInfo.docStatuses[docId] && !confirm('此文件已上傳過，確定要重新上傳嗎？')) { e.target.value = ''; return; }
 
                 // 單一 PDF → 直接上傳
@@ -2012,6 +2014,7 @@
                                                                                                         <SignatureCanvas onSave={setSignatureImg} onClear={() => setSignatureImg(null)} />
                                                                                                         <button onClick={async () => {
                                                                                                             if (isAmlDoc && !hasFundSourcesSelected()) { alert('請先勾選至少一項出資金額來源！'); return; }
+                                                                                                            if (shareholderInfo.docConfirmed[doc.id] && !shareholderInfo.docRejected[doc.id]) { alert('此文件已被股務確認，無法重新送出。'); return; }
                                                                                                             if (shareholderInfo.docStatuses[doc.id] && !confirm('此文件已簽核過，確定要重新送出嗎？')) return;
                                                                                                             const data = await handleGenerateDoc(doc.id, { signatureImage: signatureImg, isSigned: true });
                                                                                                             if (data) alert('簽核版已產生並儲存！');
