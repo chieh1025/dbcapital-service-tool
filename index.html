@@ -1107,7 +1107,8 @@
 
             const handleFileUpload = async (e, docId) => {
                 const files = Array.from(e.target.files);
-                if (!files.length || !shareholderId) { alert("請先選擇股東身分！"); return; }
+                if (!files.length) { e.target.value = ''; return; }
+                if (!shareholderId) { alert("請先選擇股東身分！"); return; }
                 if (shareholderInfo.docStatuses[docId] && !confirm('此文件已上傳過，確定要重新上傳嗎？')) { e.target.value = ''; return; }
 
                 // 單一 PDF → 直接上傳
@@ -1983,13 +1984,9 @@
                                                                                                             <button onClick={() => document.getElementById(`file-upload-${doc.id}`).click()} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
                                                                                                                 <i className="fas fa-file-upload"></i><span>選擇檔案上傳</span>
                                                                                                             </button>
-                                                                                                            <button onClick={() => document.getElementById(`camera-upload-${doc.id}`).click()} className="flex-1 border border-green-300 text-green-700 py-3 rounded-lg font-bold hover:bg-green-50 transition flex items-center justify-center gap-2">
-                                                                                                                <i className="fas fa-camera"></i><span>拍照上傳</span>
-                                                                                                            </button>
                                                                                                         </div>
                                                                                                         <div>
                                                                                                             <input id={`file-upload-${doc.id}`} type="file" accept="image/*,application/pdf" multiple onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
-                                                                                                            <input id={`camera-upload-${doc.id}`} type="file" accept="image/*" capture="environment" onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
                                                                                                             <p className="text-xs text-slate-400 text-center">支援 PDF、JPG、PNG，可選多張圖片合併</p>
                                                                                                             {pendingImages[doc.id] && pendingImages[doc.id].length > 0 && (
                                                                                                                 <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
@@ -2029,13 +2026,9 @@
                                                                                                 <button onClick={() => document.getElementById(`file-upload-${doc.id}`).click()} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
                                                                                                     <i className="fas fa-file-upload"></i><span>選擇檔案</span>
                                                                                                 </button>
-                                                                                                <button onClick={() => document.getElementById(`camera-upload-${doc.id}`).click()} className="flex-1 border border-green-300 text-green-700 py-3 rounded-lg font-bold hover:bg-green-50 transition flex items-center justify-center gap-2">
-                                                                                                    <i className="fas fa-camera"></i><span>拍照上傳</span>
-                                                                                                </button>
                                                                                             </div>
                                                                                             <div>
                                                                                                 <input id={`file-upload-${doc.id}`} type="file" accept="image/*,application/pdf" multiple onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
-                                                                                                <input id={`camera-upload-${doc.id}`} type="file" accept="image/*" capture="environment" onChange={(e) => handleFileUpload(e, doc.id)} className="hidden" />
                                                                                                 <p className="text-xs text-slate-400 text-center">支援 PDF、JPG、PNG，可選多張圖片合併</p>
                                                                                                 {pendingImages[doc.id] && pendingImages[doc.id].length > 0 && (
                                                                                                     <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
@@ -2235,11 +2228,7 @@
                                                                         <button onClick={() => document.getElementById('file-upload-doc_payment').click()} className="w-full border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
                                                                             <i className="fas fa-file-upload"></i><span>選擇檔案上傳</span>
                                                                         </button>
-                                                                        <button onClick={() => document.getElementById('camera-upload-doc_payment').click()} className="w-full border border-green-300 text-green-700 py-3 rounded-lg font-bold hover:bg-green-50 transition flex items-center justify-center gap-2">
-                                                                            <i className="fas fa-camera"></i><span>拍照上傳</span>
-                                                                        </button>
                                                                         <input id="file-upload-doc_payment" type="file" accept="image/*,application/pdf" multiple onChange={(e) => handleFileUpload(e, 'doc_payment')} className="hidden" />
-                                                                        <input id="camera-upload-doc_payment" type="file" accept="image/*" capture="environment" onChange={(e) => handleFileUpload(e, 'doc_payment')} className="hidden" />
                                                                         <p className="text-xs text-slate-400 text-center">支援 PDF、JPG、PNG，可選多張圖片合併</p>
                                                                         {pendingImages['doc_payment'] && pendingImages['doc_payment'].length > 0 && (
                                                                             <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
