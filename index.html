@@ -520,6 +520,7 @@
 
             // ★★★ D3: 多張圖片合併上傳 ★★★
             const [pendingImages, setPendingImages] = useState({}); // { doc_id: [{ file, preview }] }
+            const [otherDocNote, setOtherDocNote] = useState(''); // 其他文件說明
 
             // ★★★ B1: iframe 預覽 HTML 快取 ★★★
             const [previewHtmlMap, setPreviewHtmlMap] = useState({}); // { doc_id: htmlString }
@@ -837,7 +838,6 @@
             const result = useMemo(() => {
                 let totalShares = 0;
                 Object.values(sharesMap).forEach(val => { totalShares += (Number(val) || 0); });
-                if (totalShares <= 0) return null;
 
                 const dividendResults = config.dividends.map(setting => {
                     const gross = Math.floor(totalShares * setting.amount);
@@ -922,6 +922,7 @@
                         totalGrossDividend: result?.totalGrossDividend || 0,
                         healthInsuranceDeduction: totalHI,
                         extraCost: result?.extraCost || 0,
+                        totalShares: result?.totalShares || 0,
                         totalNewShares: result?.totalNewShares || 0,
                         totalCost: result?.totalCost || 0,
                         subscriptionPrice: config.subscriptionPrice || 160000,
@@ -987,6 +988,7 @@
                         totalGrossDividend: result?.totalGrossDividend || 0,
                         healthInsuranceDeduction: totalHI,
                         extraCost: result?.extraCost || 0,
+                        totalShares: result?.totalShares || 0,
                         totalNewShares: result?.totalNewShares || 0,
                         totalCost: result?.totalCost || 0,
                         subscriptionPrice: config.subscriptionPrice || 160000,
@@ -1110,9 +1112,10 @@
                 doc_aml_leg: '5_洗錢防制聲明書_法人',
                 doc_beneficial: '6_所有權人_實質受益人聲明書',
                 doc_payment: '7_匯款憑證',
+                doc_other: '8_其他文件',
             };
 
-            const uploadSignedFile = async (docId, base64, ext) => {
+            const uploadSignedFile = async (docId, base64, ext, options = {}) => {
                 const docLabel = docNameMap[docId] || docId;
                 const now = new Date();
                 const ts = now.getFullYear().toString()
@@ -1123,17 +1126,20 @@
                     + String(now.getSeconds()).padStart(2, '0');
                 const safeKey = `${shareholderId}_${docLabel}_${ts}_signed${ext}`;
                 const workerUrl = 'https://dbcapital-service-tool.chieh1025.workers.dev/';
+                const payload = {
+                    type: 'upload_doc',
+                    uploadSecret: 'dbcapital-upload-2025',
+                    shareholderId,
+                    filename: safeKey,
+                    file: base64
+                };
+                // doc_other 不送 docId，Worker 就不會通知 n8n
+                if (docId !== 'doc_other') payload.docId = docId;
+                if (options.note) payload.note = options.note;
                 const res = await fetch(workerUrl, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        type: 'upload_doc',
-                        uploadSecret: 'dbcapital-upload-2025',
-                        shareholderId,
-                        docId,
-                        filename: safeKey,
-                        file: base64
-                    })
+                    body: JSON.stringify(payload)
                 });
                 return await res.json();
             };
@@ -1192,8 +1198,10 @@
                     } catch (err) { /* silent */ }
                 }
                 if (!sid) { alert("請先驗證股東身分"); e.target.value = ''; return; }
-                if (shareholderInfo.docConfirmed[docId] && !shareholderInfo.docRejected[docId]) { alert('此文件已被股務確認，無法重新上傳。'); e.target.value = ''; return; }
-                if (shareholderInfo.docStatuses[docId] && !confirm('此文件已上傳過，確定要重新上傳嗎？')) { e.target.value = ''; return; }
+                if (docId !== 'doc_other') {
+                    if (shareholderInfo.docConfirmed[docId] && !shareholderInfo.docRejected[docId]) { alert('此文件已被股務確認，無法重新上傳。'); e.target.value = ''; return; }
+                    if (shareholderInfo.docStatuses[docId] && !confirm('此文件已上傳過，確定要重新上傳嗎？')) { e.target.value = ''; return; }
+                }
 
                 // 單一 PDF → 直接上傳
                 if (files.length === 1 && files[0].name.endsWith('.pdf')) {
@@ -1205,16 +1213,21 @@
                             reader.onerror = reject;
                             reader.readAsDataURL(files[0]);
                         });
-                        const data = await uploadSignedFile(docId, base64, '.pdf');
+                        const uploadOpts = docId === 'doc_other' && otherDocNote ? { note: otherDocNote } : {};
+                        const data = await uploadSignedFile(docId, base64, '.pdf', uploadOpts);
                         if (data.success) {
                             const nowStr = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
                             setDocGenResults(prev => ({ ...prev, [docId + '_signed']: { success: true, key: data.key } }));
-                            setShareholderInfo(prev => ({
-                                ...prev,
-                                docFiles: { ...prev.docFiles, ...(data.key ? { [docId]: data.key } : {}) },
-                                docStatuses: { ...prev.docStatuses, [docId]: nowStr }
-                            }));
-                            alert('簽核版上傳成功！');
+                            if (docId !== 'doc_other') {
+                                setShareholderInfo(prev => ({
+                                    ...prev,
+                                    docFiles: { ...prev.docFiles, ...(data.key ? { [docId]: data.key } : {}) },
+                                    docStatuses: { ...prev.docStatuses, [docId]: nowStr }
+                                }));
+                            } else {
+                                setOtherDocNote('');
+                            }
+                            alert(docId === 'doc_other' ? '文件上傳成功！' : '簽核版上傳成功！');
                         } else {
                             alert('上傳失敗：' + (data.message || '未知錯誤'));
                         }
@@ -1271,15 +1284,20 @@
                         pdf.addImage(images[i].preview, 'JPEG', x, y, w, h);
                     }
                     const pdfBase64 = 'data:application/pdf;base64,' + pdf.output('datauristring').split(',')[1];
-                    const data = await uploadSignedFile(docId, pdfBase64, '.pdf');
+                    const uploadOpts = docId === 'doc_other' && otherDocNote ? { note: otherDocNote } : {};
+                    const data = await uploadSignedFile(docId, pdfBase64, '.pdf', uploadOpts);
                     if (data.success) {
                         const nowStr = new Date().toLocaleString('zh-TW', { timeZone: 'Asia/Taipei' });
                         setDocGenResults(prev => ({ ...prev, [docId + '_signed']: { success: true, key: data.key } }));
-                        setShareholderInfo(prev => ({
-                            ...prev,
-                            docFiles: { ...prev.docFiles, ...(data.key ? { [docId]: data.key } : {}) },
-                            docStatuses: { ...prev.docStatuses, [docId]: nowStr }
-                        }));
+                        if (docId !== 'doc_other') {
+                            setShareholderInfo(prev => ({
+                                ...prev,
+                                docFiles: { ...prev.docFiles, ...(data.key ? { [docId]: data.key } : {}) },
+                                docStatuses: { ...prev.docStatuses, [docId]: nowStr }
+                            }));
+                        } else {
+                            setOtherDocNote('');
+                        }
                         setPendingImages(prev => { const n = { ...prev }; delete n[docId]; return n; });
                         alert('已合併 ' + images.length + ' 張圖片為 PDF 並上傳成功！');
                     } else {
@@ -2073,6 +2091,11 @@
                                                                                                             <button onClick={() => handleGeneratePDF('download', doc.id)} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center shadow-sm">
                                                                                                                 <i className="fas fa-download mr-2"></i>下載 PDF
                                                                                                             </button>
+                                                                                                            {isMobile && (
+                                                                                                            <button onClick={() => handleGeneratePDF('share', doc.id)} className="flex-1 bg-[#06C755] text-white py-3 rounded-lg font-bold hover:bg-[#05b54d] transition flex items-center justify-center shadow-sm">
+                                                                                                                <i className="fab fa-line mr-2"></i>Line 分享
+                                                                                                            </button>
+                                                                                                            )}
                                                                                                             <button onClick={() => document.getElementById(`file-upload-${doc.id}`).click()} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
                                                                                                                 <i className="fas fa-file-upload"></i><span>選擇檔案上傳</span>
                                                                                                             </button>
@@ -2115,6 +2138,11 @@
                                                                                                 <button onClick={() => handleGeneratePDF('download', doc.id)} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center shadow-sm">
                                                                                                     <i className="fas fa-download mr-2"></i>下載 PDF
                                                                                                 </button>
+                                                                                                {isMobile && (
+                                                                                                <button onClick={() => handleGeneratePDF('share', doc.id)} className="flex-1 bg-[#06C755] text-white py-3 rounded-lg font-bold hover:bg-[#05b54d] transition flex items-center justify-center shadow-sm">
+                                                                                                    <i className="fab fa-line mr-2"></i>Line 分享
+                                                                                                </button>
+                                                                                                )}
                                                                                                 <button onClick={() => document.getElementById(`file-upload-${doc.id}`).click()} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
                                                                                                     <i className="fas fa-file-upload"></i><span>選擇檔案</span>
                                                                                                 </button>
@@ -2146,7 +2174,7 @@
                                                                                 </>}
                                                                                     {/* paper_only (doc_offset) → 只有下載 + 提示繳回正本 */}
                                                                                     {isPaperOnly && (
-                                                                                        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+                                                                                        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
                                                                                             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                                                                                                 <button onClick={() => handleGeneratePDF('download', doc.id)} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center shadow-sm">
                                                                                                     <i className="fas fa-download mr-2"></i>下載 PDF
@@ -2155,6 +2183,31 @@
                                                                                                 <button onClick={() => handleGeneratePDF('share', doc.id)} className="flex-1 bg-[#06C755] text-white py-3 rounded-lg font-bold hover:bg-[#05b54d] transition flex items-center justify-center shadow-sm">
                                                                                                     <i className="fab fa-line mr-2"></i>Line 分享
                                                                                                 </button>
+                                                                                                )}
+                                                                                            </div>
+                                                                                            {/* 上傳簽名掃描檔 */}
+                                                                                            <div className="border-t border-slate-200 pt-3">
+                                                                                                <p className="text-xs text-slate-500 mb-2"><i className="fas fa-info-circle mr-1"></i>紙本簽名後，請拍照或掃描上傳</p>
+                                                                                                <button onClick={() => document.getElementById('file-upload-doc_offset').click()} className="w-full border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
+                                                                                                    <i className="fas fa-file-upload"></i><span>上傳簽名檔</span>
+                                                                                                </button>
+                                                                                                <input id="file-upload-doc_offset" type="file" accept="image/*,application/pdf" multiple onChange={(e) => handleFileUpload(e, 'doc_offset')} className="hidden" />
+                                                                                                {pendingImages['doc_offset'] && pendingImages['doc_offset'].length > 0 && (
+                                                                                                    <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                                                                                        <div className="flex items-center justify-between mb-2">
+                                                                                                            <span className="text-sm font-bold text-blue-700"><i className="fas fa-images mr-1"></i>已選 {pendingImages['doc_offset'].length} 張圖片</span>
+                                                                                                            <button onClick={() => setPendingImages(prev => { const n = { ...prev }; delete n['doc_offset']; return n; })} className="text-xs text-red-500 hover:text-red-700"><i className="fas fa-trash mr-1"></i>清除</button>
+                                                                                                        </div>
+                                                                                                        <div className="flex gap-2 overflow-x-auto pb-2">
+                                                                                                            {pendingImages['doc_offset'].map((img, idx) => (
+                                                                                                                <img key={idx} src={img.preview} className="w-16 h-20 object-cover rounded border border-blue-300 flex-shrink-0" />
+                                                                                                            ))}
+                                                                                                        </div>
+                                                                                                        <button onClick={() => document.getElementById('file-upload-doc_offset').click()} className="w-full mt-1 text-xs text-blue-600 hover:text-blue-800 py-1"><i className="fas fa-plus mr-1"></i>繼續加圖</button>
+                                                                                                        <button onClick={() => handleMergeUpload('doc_offset')} disabled={isProcessing} className="w-full mt-2 bg-blue-600 text-white py-2.5 rounded-lg font-bold hover:bg-blue-700 disabled:opacity-50 transition flex items-center justify-center gap-2">
+                                                                                                            {isProcessing ? <i className="fas fa-spinner fa-spin"></i> : <><i className="fas fa-file-pdf mr-1"></i>合併為 PDF 並上傳</>}
+                                                                                                        </button>
+                                                                                                    </div>
                                                                                                 )}
                                                                                             </div>
                                                                                         </div>
@@ -2301,6 +2354,30 @@
                                                                     )}
                                                                 </div>
                                                             </div>
+                                                            {/* 匯款帳號資訊 */}
+                                                            <div className="mx-4 mt-3 space-y-2">
+                                                                <div className="p-3 rounded-lg bg-amber-50 border border-amber-200">
+                                                                    <div className="flex items-center gap-2 mb-1">
+                                                                        <span className="text-xs font-bold text-white bg-amber-500 px-2 py-0.5 rounded">優先</span>
+                                                                        <span className="font-bold text-sm text-slate-700">帳戶一</span>
+                                                                    </div>
+                                                                    <div className="text-sm text-slate-600 space-y-0.5">
+                                                                        <div>銀行：永豐銀行竹北自強分行（代號 807）</div>
+                                                                        <div>帳號：<span className="font-mono font-bold">039-018-0007392-3</span></div>
+                                                                        <div>戶名：達飆資本股份有限公司</div>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="p-3 rounded-lg bg-slate-50 border border-slate-200">
+                                                                    <div className="mb-1">
+                                                                        <span className="font-bold text-sm text-slate-700">帳戶二</span>
+                                                                    </div>
+                                                                    <div className="text-sm text-slate-600 space-y-0.5">
+                                                                        <div>銀行：國泰世華銀行六家分行（代號 013）</div>
+                                                                        <div>帳號：<span className="font-mono font-bold">139-03-005898-2</span></div>
+                                                                        <div>戶名：達飆資本股份有限公司</div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
                                                             {shareholderInfo.docRejected['doc_payment'] && (
                                                                 <div className="p-3 mx-4 mt-3 rounded-lg bg-red-50 text-red-700 border border-red-200">
                                                                     <div className="flex items-center gap-2 font-bold text-sm">
@@ -2347,6 +2424,56 @@
                                                                     )}
                                                                 </div>
                                                             )}
+                                                        </div>
+
+                                                        {/* ★★★ 其他文件上傳卡片 ★★★ */}
+                                                        <div className="border rounded-xl overflow-hidden border-slate-300 bg-white mt-2">
+                                                            <div className="p-6 flex justify-between items-center bg-slate-50">
+                                                                <div className="flex items-center gap-4">
+                                                                    <div className="w-10 h-10 rounded-full flex items-center justify-center bg-slate-200 text-slate-600">
+                                                                        <i className="fas fa-folder-plus"></i>
+                                                                    </div>
+                                                                    <div>
+                                                                        <h3 className="font-bold text-lg text-slate-700">其他文件上傳</h3>
+                                                                        <p className="text-xs text-slate-500">基本資料佐證文件、變更事項登記表、身分證等</p>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div className="p-4 sm:p-6 border-t border-slate-200 bg-slate-50">
+                                                                <div className="space-y-3">
+                                                                    <div>
+                                                                        <label className="block text-sm font-bold text-slate-600 mb-1">文件說明</label>
+                                                                        <input type="text" value={otherDocNote} onChange={(e) => setOtherDocNote(e.target.value)} placeholder="請簡述上傳的文件內容" className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+                                                                    </div>
+                                                                    <button onClick={() => document.getElementById('file-upload-doc_other').click()} className="w-full border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
+                                                                        <i className="fas fa-file-upload"></i><span>選擇檔案上傳</span>
+                                                                    </button>
+                                                                    <input id="file-upload-doc_other" type="file" accept="image/*,application/pdf" multiple onChange={(e) => handleFileUpload(e, 'doc_other')} className="hidden" />
+                                                                    <p className="text-xs text-slate-400 text-center">支援 PDF、JPG、PNG，可選多張圖片合併</p>
+                                                                    {pendingImages['doc_other'] && pendingImages['doc_other'].length > 0 && (
+                                                                        <div className="mt-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                                                            <div className="flex items-center justify-between mb-2">
+                                                                                <span className="text-sm font-bold text-blue-700"><i className="fas fa-images mr-1"></i>已選 {pendingImages['doc_other'].length} 張圖片</span>
+                                                                                <button onClick={() => setPendingImages(prev => { const n = { ...prev }; delete n['doc_other']; return n; })} className="text-xs text-red-500 hover:text-red-700"><i className="fas fa-trash mr-1"></i>清除</button>
+                                                                            </div>
+                                                                            <div className="flex gap-2 overflow-x-auto pb-2">
+                                                                                {pendingImages['doc_other'].map((img, idx) => (
+                                                                                    <img key={idx} src={img.preview} className="w-16 h-20 object-cover rounded border border-blue-300 flex-shrink-0" />
+                                                                                ))}
+                                                                            </div>
+                                                                            <button onClick={() => document.getElementById('file-upload-doc_other').click()} className="w-full mt-1 text-xs text-blue-600 hover:text-blue-800 py-1"><i className="fas fa-plus mr-1"></i>繼續加圖</button>
+                                                                            <button onClick={() => handleMergeUpload('doc_other')} disabled={isProcessing} className="w-full mt-2 bg-blue-600 text-white py-2.5 rounded-lg font-bold hover:bg-blue-700 disabled:opacity-50 transition flex items-center justify-center gap-2">
+                                                                                {isProcessing ? <i className="fas fa-spinner fa-spin"></i> : <><i className="fas fa-file-pdf mr-1"></i>合併為 PDF 並上傳</>}
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                                {docGenResults['doc_other_signed'] && (
+                                                                    <div className="mt-3 p-2.5 rounded text-xs bg-green-50 text-green-700 border border-green-200">
+                                                                        <i className="fas fa-check-circle mr-1"></i>已上傳
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
