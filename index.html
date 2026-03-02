@@ -319,64 +319,24 @@
                 loadConfig();
             }, []);
 
-            // ★★★ Session 恢復（手機開相機後頁面被回收時自動重新驗證）★★★
+            // ★★★ Session 恢復（手機開相機後頁面被回收時即時還原）★★★
             useEffect(() => {
                 if (isConfigLoading || isVerified) return;
                 const saved = sessionStorage.getItem('dbcapital_session');
                 if (!saved) return;
                 try {
-                    const { shareholderId: sid, verifyCode } = JSON.parse(saved);
-                    if (!sid || !verifyCode) return;
-                    // 靜默重新驗證
-                    (async () => {
-                        try {
-                            setShareholderId(sid);
-                            setInputVerifyCode(verifyCode);
-                            const res = await fetch(config.n8nApiUrl, {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ type: 'verify', shareholderId: sid, code: verifyCode })
-                            });
-                            const data = await res.json();
-                            if (data.success) {
-                                setIsVerified(true);
-                                setName(data.name);
-                                setShareholderInfo({
-                                    idNumber: data.idNumber || '', birthDate: data.birthDate || '',
-                                    nationality: data.nationality || '', address: data.address || '',
-                                    phone: data.phone || '', representative: data.representative || '',
-                                    docConfirmed: data.docConfirmed || {}, docStatuses: data.docStatuses || {},
-                                    docFiles: data.docFiles || {}, docRejected: data.docRejected || {},
-                                    docRejectReasons: data.docRejectReasons || {}
-                                });
-                                if (data.shares) {
-                                    if (typeof data.shares === 'object') {
-                                        setSharesMap(prev => ({ ...prev, ...data.shares }));
-                                    } else {
-                                        const firstType = config.shareTypes[0].id;
-                                        setSharesMap(prev => ({ ...prev, [firstType]: data.shares }));
-                                    }
-                                }
-                                if (data.willParticipate === '是') {
-                                    setWillingToOffset(true);
-                                    setAdditionalShares((data.subscriptionShares || 0).toString());
-                                    setIsSubscriptionConfirmed(true);
-                                } else if (data.willParticipate === '否') {
-                                    setWillingToOffset(false);
-                                    setIsSubscriptionConfirmed(true);
-                                }
-                                const localTarget = config.shareholderOptions.find(o => o.id === sid);
-                                if (data.type) setType(data.type);
-                                else if (localTarget) setType(localTarget.type || 'natural');
-                                setActiveTab('capital_increase');
-                            } else {
-                                sessionStorage.removeItem('dbcapital_session');
-                            }
-                        } catch (e) {
-                            console.error('Session restore failed:', e);
-                            sessionStorage.removeItem('dbcapital_session');
-                        }
-                    })();
+                    const s = JSON.parse(saved);
+                    if (!s.shareholderId) { sessionStorage.removeItem('dbcapital_session'); return; }
+                    // 即時還原狀態（不需 API call）
+                    setShareholderId(s.shareholderId);
+                    setName(s.name || '');
+                    setType(s.type || 'natural');
+                    if (s.shareholderInfo) setShareholderInfo(s.shareholderInfo);
+                    if (s.willingToOffset != null) setWillingToOffset(s.willingToOffset);
+                    if (s.additionalShares != null) setAdditionalShares(s.additionalShares);
+                    if (s.isSubscriptionConfirmed) setIsSubscriptionConfirmed(true);
+                    setIsVerified(true);
+                    setActiveTab('capital_increase');
                 } catch (e) {
                     sessionStorage.removeItem('dbcapital_session');
                 }
@@ -642,14 +602,15 @@
             };
 
 
-            // ★★★ 持續保持 session（確保已驗證狀態一定有存）★★★
+            // ★★★ 持續保持 session（防手機開相機頁面被回收）★★★
             useEffect(() => {
-                if (isVerified && shareholderId && inputVerifyCode) {
+                if (isVerified && shareholderId) {
                     sessionStorage.setItem('dbcapital_session', JSON.stringify({
-                        shareholderId, verifyCode: inputVerifyCode
+                        shareholderId, name, type, shareholderInfo,
+                        willingToOffset, additionalShares, isSubscriptionConfirmed,
                     }));
                 }
-            }, [isVerified, shareholderId, inputVerifyCode]);
+            }, [isVerified, shareholderId, name, type, shareholderInfo, willingToOffset, additionalShares, isSubscriptionConfirmed]);
 
             // ★★★ 30 分鐘無操作自動登出 ★★★
             const SESSION_TIMEOUT = 30 * 60 * 1000;
@@ -766,10 +727,6 @@
                                 setIsSubscriptionConfirmed(true);
                             }
 
-                            // ★ Session 持久化（防手機開相機後頁面被回收）
-                            sessionStorage.setItem('dbcapital_session', JSON.stringify({
-                                shareholderId, verifyCode: inputVerifyCode
-                            }));
 
                             // ★ LINE 綁定成功提示
                             if (lineUserId) {
