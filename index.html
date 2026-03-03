@@ -2377,9 +2377,11 @@
                                                                                     {isPaperOnly && (
                                                                                         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
                                                                                             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                                                                                                {!isMobile && (
                                                                                                 <button onClick={() => handleGeneratePDF('download', doc.id)} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center shadow-sm">
                                                                                                     <i className="fas fa-download mr-2"></i>下載 PDF
                                                                                                 </button>
+                                                                                                )}
                                                                                                 {isMobile && (
                                                                                                 <button onClick={() => handleGeneratePDF('share', doc.id)} className="flex-1 bg-[#06C755] text-white py-3 rounded-lg font-bold hover:bg-[#05b54d] transition flex items-center justify-center shadow-sm">
                                                                                                     <i className="fab fa-line mr-2"></i>Line 分享
