@@ -469,6 +469,7 @@
                 if (s.willingToOffset != null) setWillingToOffset(s.willingToOffset);
                 if (s.additionalShares != null) setAdditionalShares(s.additionalShares);
                 if (s.isSubscriptionConfirmed) setIsSubscriptionConfirmed(true);
+                if (s.fundSources) setFundSources(s.fundSources);
                 setIsVerified(true);
                 setActiveTab('capital_increase');
                 startHeartbeat(s.shareholderId, s.name || '', s.type || 'natural');
@@ -750,7 +751,7 @@
                 if (isVerified && shareholderId) {
                     localStorage.setItem(SESSION_KEY, JSON.stringify({
                         shareholderId, name, type, shareholderInfo, sharesMap,
-                        willingToOffset, additionalShares, isSubscriptionConfirmed,
+                        willingToOffset, additionalShares, isSubscriptionConfirmed, fundSources,
                         savedAt: Date.now(),
                     }));
                     // Cookie fallback（LINE in-app browser 可能清 localStorage 但保留 cookie）
@@ -857,6 +858,7 @@
                         setType(s.type || 'natural');
                         if (s.shareholderInfo) setShareholderInfo(s.shareholderInfo);
                         if (s.sharesMap) setSharesMap(prev => ({ ...prev, ...s.sharesMap }));
+                        if (s.fundSources) setFundSources(s.fundSources);
                         setIsVerified(true);
                         setActiveTab('capital_increase');
                         startHeartbeat(s.shareholderId, s.name || '', s.type || 'natural');
@@ -1163,11 +1165,16 @@
             // ★★★ 改用 Gotenberg 後端產 PDF，不再用 html2canvas ★★★
             const handleGeneratePDF = async (action, targetDocId) => {
                 if (!shareholderId) { alert("請先選擇股東身分！"); return; }
+                if ((targetDocId === 'doc_aml_nat' || targetDocId === 'doc_aml_leg') && !hasFundSourcesSelected()) {
+                    alert('請先至認購區勾選出資金額來源！');
+                    return;
+                }
                 if (shareholderInfo.docConfirmed[targetDocId] && !shareholderInfo.docRejected[targetDocId]) { alert('此文件已被股務確認，無法重新產生。'); return; }
 
-                // 已有 R2 檔案 → 嘗試直接下載/分享
+                // 已有 R2 檔案 → 嘗試直接下載/分享（AML 文件若出資來源有變則跳過快取）
+                const isAmlTarget = targetDocId === 'doc_aml_nat' || targetDocId === 'doc_aml_leg';
                 const existingKey = shareholderInfo.docFiles[targetDocId];
-                if (existingKey) {
+                if (existingKey && !isAmlTarget) {
                     const workerBase = 'https://dbcapital-service-tool.chieh1025.workers.dev/';
                     const checkUrl = workerBase + encodeURIComponent(existingKey);
                     try {
@@ -1212,7 +1219,7 @@
 
                     // 2. 從 R2 下載 PDF
                     const workerBase = 'https://dbcapital-service-tool.chieh1025.workers.dev/';
-                    const downloadUrl = workerBase + data.key;
+                    const downloadUrl = workerBase + encodeURIComponent(data.key);
 
                     const docTitle = config.documents.find(d => d.id === targetDocId)?.title || targetDocId;
                     const filename = `${shareholderId}_${name}_${docTitle}.pdf`;
@@ -2263,6 +2270,7 @@
                                                                                                             <SignatureCanvas onSave={setSignatureImg} onClear={() => setSignatureImg(null)} />
                                                                                                         )}
                                                                                                         <button onClick={async () => {
+                                                                                                            if (isAmlDoc && !hasFundSourcesSelected()) { alert('請先至認購區勾選出資金額來源！'); return; }
                                                                                                             if (shareholderInfo.docConfirmed[doc.id] && !shareholderInfo.docRejected[doc.id]) { alert('此文件已被股務確認，無法重新送出。'); return; }
                                                                                                             if (shareholderInfo.docStatuses[doc.id] && !confirm('此文件已簽核過，確定要重新送出嗎？')) return;
                                                                                                             const data = await handleGenerateDoc(doc.id, { signatureImage: signatureImg, isSigned: true });
@@ -2282,11 +2290,13 @@
                                                                                                                 <i className="fas fa-download mr-2"></i>下載 PDF
                                                                                                             </button>
                                                                                                             )}
+                                                                                                            {isMobile && (
                                                                                                             <button onClick={() => handleGeneratePDF('share', doc.id)} className="flex-1 bg-[#06C755] text-white py-3 rounded-lg font-bold hover:bg-[#05b54d] transition flex items-center justify-center shadow-sm">
                                                                                                                 <i className="fab fa-line mr-2"></i>Line 分享
                                                                                                             </button>
+                                                                                                            )}
                                                                                                             <button onClick={() => document.getElementById(`file-upload-${doc.id}`).click()} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
-                                                                                                                <i className="fas fa-file-upload"></i><span>選擇檔案上傳</span>
+                                                                                                                <i className="fas fa-file-upload"></i><span>檔案上傳</span>
                                                                                                             </button>
                                                                                                         </div>
                                                                                                         <div>
@@ -2329,11 +2339,13 @@
                                                                                                     <i className="fas fa-download mr-2"></i>下載 PDF
                                                                                                 </button>
                                                                                                 )}
+                                                                                                {isMobile && (
                                                                                                 <button onClick={() => handleGeneratePDF('share', doc.id)} className="flex-1 bg-[#06C755] text-white py-3 rounded-lg font-bold hover:bg-[#05b54d] transition flex items-center justify-center shadow-sm">
                                                                                                     <i className="fab fa-line mr-2"></i>Line 分享
                                                                                                 </button>
+                                                                                                )}
                                                                                                 <button onClick={() => document.getElementById(`file-upload-${doc.id}`).click()} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
-                                                                                                    <i className="fas fa-file-upload"></i><span>選擇檔案</span>
+                                                                                                    <i className="fas fa-file-upload"></i><span>檔案上傳</span>
                                                                                                 </button>
                                                                                             </div>
                                                                                             <div>
@@ -2365,20 +2377,20 @@
                                                                                     {isPaperOnly && (
                                                                                         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
                                                                                             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
-                                                                                                {!isMobile && (
                                                                                                 <button onClick={() => handleGeneratePDF('download', doc.id)} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center shadow-sm">
                                                                                                     <i className="fas fa-download mr-2"></i>下載 PDF
                                                                                                 </button>
-                                                                                                )}
+                                                                                                {isMobile && (
                                                                                                 <button onClick={() => handleGeneratePDF('share', doc.id)} className="flex-1 bg-[#06C755] text-white py-3 rounded-lg font-bold hover:bg-[#05b54d] transition flex items-center justify-center shadow-sm">
                                                                                                     <i className="fab fa-line mr-2"></i>Line 分享
                                                                                                 </button>
+                                                                                                )}
                                                                                             </div>
                                                                                             {/* 上傳簽名掃描檔 */}
                                                                                             <div className="border-t border-slate-200 pt-3">
-                                                                                                <p className="text-xs text-slate-500 mb-2"><i className="fas fa-info-circle mr-1"></i>紙本簽名後，請拍照或掃描上傳</p>
+                                                                                                <p className="text-xs text-slate-500 mb-2"><i className="fas fa-info-circle mr-1"></i>紙本簽名/用印後，請拍照或掃描上傳，並繳交正本</p>
                                                                                                 <button onClick={() => document.getElementById('file-upload-doc_offset').click()} className="w-full border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
-                                                                                                    <i className="fas fa-file-upload"></i><span>上傳簽名檔</span>
+                                                                                                    <i className="fas fa-file-upload"></i><span>檔案上傳</span>
                                                                                                 </button>
                                                                                                 <input id="file-upload-doc_offset" type="file" accept="image/*,application/pdf" multiple onChange={(e) => handleFileUpload(e, 'doc_offset')} className="hidden" />
                                                                                                 {pendingImages['doc_offset'] && pendingImages['doc_offset'].length > 0 && (
@@ -2584,7 +2596,7 @@
                                                                 <div className="p-4 sm:p-6 border-t border-amber-200 bg-slate-50">
                                                                     <div className="space-y-2">
                                                                         <button onClick={() => document.getElementById('file-upload-doc_payment').click()} className="w-full border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
-                                                                            <i className="fas fa-file-upload"></i><span>選擇檔案上傳</span>
+                                                                            <i className="fas fa-file-upload"></i><span>檔案上傳</span>
                                                                         </button>
                                                                         <input id="file-upload-doc_payment" type="file" accept="image/*,application/pdf" multiple onChange={(e) => handleFileUpload(e, 'doc_payment')} className="hidden" />
                                                                         <p className="text-xs text-slate-400 text-center">支援 PDF、JPG、PNG，可選多張圖片合併</p>
@@ -2635,7 +2647,7 @@
                                                                         <input type="text" value={otherDocNote} onChange={(e) => setOtherDocNote(e.target.value)} placeholder="請簡述上傳的文件內容" className="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
                                                                     </div>
                                                                     <button onClick={() => document.getElementById('file-upload-doc_other').click()} className="w-full border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
-                                                                        <i className="fas fa-file-upload"></i><span>選擇檔案上傳</span>
+                                                                        <i className="fas fa-file-upload"></i><span>檔案上傳</span>
                                                                     </button>
                                                                     <input id="file-upload-doc_other" type="file" accept="image/*,application/pdf" multiple onChange={(e) => handleFileUpload(e, 'doc_other')} className="hidden" />
                                                                     <p className="text-xs text-slate-400 text-center">支援 PDF、JPG、PNG，可選多張圖片合併</p>
