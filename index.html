@@ -802,7 +802,7 @@
                     }).catch(() => {});
                 };
                 beat();
-                heartbeatRef.current = setInterval(beat, 300000);
+                heartbeatRef.current = setInterval(beat, 1200000);
             };
 
             const stopHeartbeat = () => {
