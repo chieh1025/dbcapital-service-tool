@@ -269,6 +269,129 @@
             );
         }
 
+        // ==========================================
+        // ★★★ 全螢幕橫向簽名 Modal（手機用） ★★★
+        // ==========================================
+        function FullscreenSignatureModal({ onConfirm, onClose }) {
+            const canvasRef = useRef(null);
+            const [isDrawing, setIsDrawing] = useState(false);
+            const [hasDrawn, setHasDrawn] = useState(false);
+
+            useEffect(() => {
+                document.body.style.overflow = 'hidden';
+                return () => { document.body.style.overflow = ''; };
+            }, []);
+
+            useEffect(() => {
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                // 橫向 modal：canvas 寬=視窗高，高=視窗寬（旋轉後）
+                const w = window.innerHeight;
+                const h = window.innerWidth - 56; // 扣除頂部列高度
+                const dpr = Math.max(window.devicePixelRatio || 1, 1);
+                canvas.style.width = w + 'px';
+                canvas.style.height = h + 'px';
+                canvas.width = w * dpr;
+                canvas.height = h * dpr;
+                const ctx = canvas.getContext('2d');
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2.5 * dpr;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                // 白底
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }, []);
+
+            const getPos = (e) => {
+                const canvas = canvasRef.current;
+                const rect = canvas.getBoundingClientRect();
+                const clientX = e.clientX ?? e.touches[0].clientX;
+                const clientY = e.clientY ?? e.touches[0].clientY;
+                return {
+                    x: (clientX - rect.left) * (canvas.width / rect.width),
+                    y: (clientY - rect.top) * (canvas.height / rect.height),
+                };
+            };
+
+            const startDrawing = (e) => {
+                e.preventDefault();
+                setIsDrawing(true);
+                setHasDrawn(true);
+                const { x, y } = getPos(e);
+                const ctx = canvasRef.current.getContext('2d');
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+            };
+
+            const draw = (e) => {
+                if (!isDrawing) return;
+                e.preventDefault();
+                const { x, y } = getPos(e);
+                const ctx = canvasRef.current.getContext('2d');
+                ctx.lineTo(x, y);
+                ctx.stroke();
+            };
+
+            const stopDrawing = () => { setIsDrawing(false); };
+
+            const clearCanvas = () => {
+                const canvas = canvasRef.current;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#fff';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.beginPath();
+                setHasDrawn(false);
+            };
+
+            const handleConfirm = () => {
+                if (!hasDrawn) return;
+                onConfirm(canvasRef.current.toDataURL());
+            };
+
+            return (
+                <div className="fixed inset-0 z-50 bg-black">
+                    <div style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        width: window.innerHeight + 'px',
+                        height: window.innerWidth + 'px',
+                        transformOrigin: 'top left',
+                        transform: `rotate(90deg) translateY(-${window.innerWidth}px)`,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        background: '#f8fafc'
+                    }}>
+                        {/* 頂部列 */}
+                        <div style={{ height: '56px', flexShrink: 0 }} className="bg-slate-800 flex items-center justify-between px-4">
+                            <button onClick={clearCanvas} className="text-white text-sm font-bold px-4 py-2 bg-slate-600 rounded-lg hover:bg-slate-500 transition">
+                                <i className="fas fa-eraser mr-1"></i>清除
+                            </button>
+                            <span className="text-white font-bold text-sm">請在此簽名</span>
+                            <button onClick={handleConfirm} disabled={!hasDrawn} className="text-white text-sm font-bold px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40 transition">
+                                <i className="fas fa-check mr-1"></i>確認
+                            </button>
+                        </div>
+                        {/* Canvas 佔滿剩餘 */}
+                        <div style={{ flex: 1 }}>
+                            <canvas
+                                ref={canvasRef}
+                                style={{ display: 'block', touchAction: 'none', cursor: 'crosshair' }}
+                                onMouseDown={startDrawing}
+                                onMouseMove={draw}
+                                onMouseUp={stopDrawing}
+                                onMouseLeave={stopDrawing}
+                                onTouchStart={startDrawing}
+                                onTouchMove={draw}
+                                onTouchEnd={stopDrawing}
+                            />
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
 
         function App() {
             // ★★★ 開發模式：?dev=1 自然人 | ?dev=2 法人 ★★★
@@ -382,11 +505,21 @@
                     setWillingToOffset(false);
                     setIsSubscriptionConfirmed(true);
                 }
+                // ★★★ 還原出資來源 ★★★
+                if (data.fundSources) {
+                    const restored = {};
+                    data.fundSources.split(',').forEach(s => { if (s.trim()) restored[s.trim()] = true; });
+                    setFundSources(restored);
+                }
                 const localTarget = config.shareholderOptions.find(o => o.id === data.shareholderId);
                 const resolvedType = data.type || (localTarget ? localTarget.type : 'natural') || 'natural';
                 if (data.type) setType(data.type);
                 else if (localTarget) setType(localTarget.type || 'natural');
                 startHeartbeat(data.shareholderId || '', data.name || '', resolvedType);
+                // ★★★ 出資來源提醒（LINE 自動登入）★★★
+                if (data.willParticipate === '是' && !data.fundSources) {
+                    setTimeout(() => alert('提醒：您尚未填寫出資金額來源，請至「增資文件填繳」頁面補填後重新送出。\n\n補填後請重新下載「洗錢防制聲明書」，以更新文件內容。'), 500);
+                }
             };
 
             // ★★★ LIFF 初始化 ★★★
@@ -531,6 +664,7 @@
             const [expandedDocId, setExpandedDocId] = useState(null);
             const [signMethod, setSignMethod] = useState('online');
             const [signatureImg, setSignatureImg] = useState(null);
+            const [signFullscreen, setSignFullscreen] = useState(false);
             const [isProcessing, setIsProcessing] = useState(false);
             const [isCapturing, setIsCapturing] = useState(false);
 
@@ -667,7 +801,7 @@
                     }).catch(() => {});
                 };
                 beat();
-                heartbeatRef.current = setInterval(beat, 60000);
+                heartbeatRef.current = setInterval(beat, 300000);
             };
 
             const stopHeartbeat = () => {
@@ -788,14 +922,24 @@
                                 setWillingToOffset(false);
                                 setIsSubscriptionConfirmed(true);
                             }
+                            // ★★★ 還原出資來源 ★★★
+                            if (data.fundSources) {
+                                const restored = {};
+                                data.fundSources.split(',').forEach(s => { if (s.trim()) restored[s.trim()] = true; });
+                                setFundSources(restored);
+                            }
 
 
                             // ★ LINE 綁定成功提示
+                            const needFundSourceReminder = data.willParticipate === '是' && !data.fundSources;
                             if (lineUserId) {
                                 setLineBindStatus('bound');
                                 alert(`驗證成功！歡迎 ${data.name} 股東。\nLINE 帳號已綁定，下次可直接從 LINE 一鍵登入。`);
                             } else {
                                 alert(`驗證成功！歡迎 ${data.name} 股東。`);
+                            }
+                            if (needFundSourceReminder) {
+                                setTimeout(() => alert('提醒：您尚未填寫出資金額來源，請至「增資文件填繳」頁面補填後重新送出。\n\n補填後請重新下載「洗錢防制聲明書」，以更新文件內容。'), 300);
                             }
 
                             // ★★★ Fix: Ensure type is set correctly based on local config or backend response ★★★
@@ -1019,12 +1163,44 @@
             // ★★★ 改用 Gotenberg 後端產 PDF，不再用 html2canvas ★★★
             const handleGeneratePDF = async (action, targetDocId) => {
                 if (!shareholderId) { alert("請先選擇股東身分！"); return; }
-                if ((targetDocId === 'doc_aml_nat' || targetDocId === 'doc_aml_leg') && !hasFundSourcesSelected()) {
-                    alert('請先勾選至少一項出資金額來源！');
-                    return;
-                }
                 if (shareholderInfo.docConfirmed[targetDocId] && !shareholderInfo.docRejected[targetDocId]) { alert('此文件已被股務確認，無法重新產生。'); return; }
-                if (shareholderInfo.docStatuses[targetDocId] && !confirm('此文件已簽核過，確定要重新產生嗎？')) return;
+
+                // 已有 R2 檔案 → 嘗試直接下載/分享
+                const existingKey = shareholderInfo.docFiles[targetDocId];
+                if (existingKey) {
+                    const workerBase = 'https://dbcapital-service-tool.chieh1025.workers.dev/';
+                    const checkUrl = workerBase + encodeURIComponent(existingKey);
+                    try {
+                        const checkRes = await fetch(checkUrl);
+                        if (checkRes.ok) {
+                            const blob = await checkRes.blob();
+                            const docTitle = config.documents.find(d => d.id === targetDocId)?.title || targetDocId;
+                            const filename = `${shareholderId}_${name}_${docTitle}.pdf`;
+                            if (action === 'share') {
+                                const file = new File([blob], filename, { type: 'application/pdf' });
+                                if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                                    await navigator.share({ files: [file], title: docTitle, text: `${name} 的 ${docTitle}` });
+                                } else {
+                                    const url = URL.createObjectURL(blob);
+                                    const a = document.createElement('a');
+                                    a.href = url; a.download = filename; a.click();
+                                    URL.revokeObjectURL(url);
+                                }
+                            } else {
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url; a.download = filename; a.click();
+                                URL.revokeObjectURL(url);
+                            }
+                            return;
+                        }
+                        // R2 找不到 → 繼續往下走 Gotenberg 重新產生
+                        console.warn('R2 file not found, fallback to Gotenberg:', existingKey);
+                    } catch (err) {
+                        console.warn('R2 fetch failed, fallback to Gotenberg:', err);
+                    }
+                }
+
                 setIsProcessing(true);
                 try {
                     // 1. 呼叫 generate_doc 產 PDF 並存到 R2
@@ -1035,8 +1211,6 @@
                     }
 
                     // 2. 從 R2 下載 PDF
-                    const pdfUrl = config.n8nApiUrl.replace(/\/+$/, '').replace(/\/webhook\/api$/, '').replace(/n8n-dbcapital-service\.zeabur\.app.*/, 'dbcapital-service-tool.chieh1025.workers.dev') + '/' + data.key;
-                    // 用 Worker URL 下載
                     const workerBase = 'https://dbcapital-service-tool.chieh1025.workers.dev/';
                     const downloadUrl = workerBase + data.key;
 
@@ -1044,7 +1218,6 @@
                     const filename = `${shareholderId}_${name}_${docTitle}.pdf`;
 
                     if (action === 'download') {
-                        // 直接開啟下載連結
                         const res = await fetch(downloadUrl);
                         const blob = await res.blob();
                         const url = URL.createObjectURL(blob);
@@ -1329,7 +1502,8 @@
                             willParticipate: willingToOffset,
                             subscriptionShares: willingToOffset ? (Number(additionalShares) || 0) : 0,
                             subscriptionCost: willingToOffset ? result.extraCost : 0,
-                            finalBalance: willingToOffset ? result.finalBalance : result.totalNetDividend
+                            finalBalance: willingToOffset ? result.finalBalance : result.totalNetDividend,
+                            fundSources: willingToOffset ? Object.keys(fundSources).filter(k => fundSources[k]).join(',') : ''
                         })
                     });
                     const data = await res.json();
@@ -1356,7 +1530,7 @@
             // ★★★ 自動生成所有文件原檔（Gotenberg → R2）★★★
             const uploadAllDocuments = async () => {
                 if (!result || !config.n8nApiUrl) return;
-                const applicableDocs = config.documents.filter(doc => doc.audience === 'all' || doc.audience === type);
+                const applicableDocs = config.documents.filter(doc => (doc.audience === 'all' || doc.audience === type) && doc.type !== 'upload_only');
                 let successCount = 0;
                 let failCount = 0;
 
@@ -1860,6 +2034,21 @@
                                                                 </div>
                                                             </div>
 
+                                                            {/* ★★★ 出資來源勾選（認購區） ★★★ */}
+                                                            <div className={`bg-white p-4 rounded-xl shadow-sm border mb-6 ${hasFundSourcesSelected() ? 'border-slate-200' : 'border-red-400 ring-1 ring-red-300'}`}>
+                                                                <h4 className="font-bold mb-2 text-slate-700 text-sm"><i className="fas fa-wallet mr-1"></i>依洗錢防制法規定，請勾選出資金額來源{!hasFundSourcesSelected() && <span className="text-red-500 ml-1">(必選)</span>}</h4>
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    {(type === 'legal' ? ['資本','薪資','營利','借款','受贈','繼承'] : ['薪資','營利','借款','受贈','繼承']).map(src => (
+                                                                        <button key={src} onClick={() => toggleFundSource(src)} className={`px-3 py-1.5 rounded-lg border text-sm font-bold transition ${fundSources[src] ? 'bg-blue-100 border-blue-500 text-blue-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
+                                                                            {fundSources[src] && <i className="fas fa-check mr-1 text-xs"></i>}{src}
+                                                                        </button>
+                                                                    ))}
+                                                                    <button onClick={() => toggleFundSource('其他')} className={`px-3 py-1.5 rounded-lg border text-sm font-bold transition ${fundSources['其他'] ? 'bg-blue-100 border-blue-500 text-blue-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
+                                                                        {fundSources['其他'] && <i className="fas fa-check mr-1 text-xs"></i>}其他
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+
                                                             <div className="p-4 sm:p-6 bg-blue-50 rounded-xl border border-blue-100 text-center">
                                                                 <div className="text-slate-600 mb-2">計算結果</div>
                                                                 <div className="text-xl sm:text-3xl font-bold text-blue-800">
@@ -1869,7 +2058,7 @@
                                                                         <span>實際應退回金額： <span className="text-green-600">+${formatInput(result.totalNetDividend - result.extraCost)}</span> (領回)</span>
                                                                     )}
                                                                 </div>
-                                                                <button onClick={handleSaveSubscription} disabled={isProcessing || !additionalShares || config.capitalIncreaseEnabled !== 'true'} className="mt-6 w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md disabled:opacity-50 transition">
+                                                                <button onClick={handleSaveSubscription} disabled={isProcessing || !additionalShares || !hasFundSourcesSelected() || config.capitalIncreaseEnabled !== 'true'} className="mt-6 w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md disabled:opacity-50 transition">
                                                                     {isProcessing ? <><i className="fas fa-spinner fa-spin mr-2"></i>儲存中...</> : <><i className="fas fa-paper-plane mr-2"></i>確認認購送出</>}
                                                                 </button>
                                                             </div>
@@ -2038,23 +2227,6 @@
                                                                                     </div>
                                                                                 )}
                                                                                 {config.docUploadEnabled === 'true' && <>
-                                                                                {/* ★★★ 出資來源勾選（洗錢防制聲明書才顯示） ★★★ */}
-                                                                                    {isAmlDoc && (
-                                                                                        <div className={`bg-white p-4 rounded-xl shadow-sm border ${hasFundSourcesSelected() ? 'border-slate-200' : 'border-red-400 ring-1 ring-red-300'}`}>
-                                                                                            <h4 className="font-bold mb-3 text-slate-700 text-sm"><i className="fas fa-wallet mr-1"></i>出資金額來源{!hasFundSourcesSelected() && <span className="text-red-500 ml-1">(必選)</span>}</h4>
-                                                                                            <div className="flex flex-wrap gap-2">
-                                                                                                {(type === 'legal' ? ['資本','薪資','營利','借款','受贈','繼承'] : ['薪資','營利','借款','受贈','繼承']).map(src => (
-                                                                                                    <button key={src} onClick={() => toggleFundSource(src)} className={`px-3 py-1.5 rounded-lg border text-sm font-bold transition ${fundSources[src] ? 'bg-blue-100 border-blue-500 text-blue-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
-                                                                                                        {fundSources[src] && <i className="fas fa-check mr-1 text-xs"></i>}{src}
-                                                                                                    </button>
-                                                                                                ))}
-                                                                                                <button onClick={() => toggleFundSource('其他')} className={`px-3 py-1.5 rounded-lg border text-sm font-bold transition ${fundSources['其他'] ? 'bg-blue-100 border-blue-500 text-blue-700' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
-                                                                                                    {fundSources['其他'] && <i className="fas fa-check mr-1 text-xs"></i>}其他
-                                                                                                </button>
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    )}
-
                                                                                     {/* ★★★ D1: 簽章方式 tab ★★★ */}
                                                                                     {/* 自然人 hybrid → 顯示兩個 tab */}
                                                                                     {type === 'natural' && isHybrid && (
@@ -2071,9 +2243,26 @@
                                                                                             <div className="p-4">
                                                                                                 {signMethod === 'online' ? (
                                                                                                     <div className="space-y-4">
-                                                                                                        <SignatureCanvas onSave={setSignatureImg} onClear={() => setSignatureImg(null)} />
+                                                                                                        {isMobile ? (
+                                                                                                            <div>
+                                                                                                                <div onClick={() => setSignFullscreen(true)} className="signature-pad h-48 w-full flex items-center justify-center cursor-pointer bg-white border-2 border-dashed border-slate-300 rounded-lg hover:border-blue-400 transition">
+                                                                                                                    {signatureImg ? (
+                                                                                                                        <img src={signatureImg} className="max-h-full max-w-full object-contain" />
+                                                                                                                    ) : (
+                                                                                                                        <div className="text-center text-slate-400">
+                                                                                                                            <i className="fas fa-pen-nib text-3xl mb-2"></i>
+                                                                                                                            <p className="text-sm font-bold">點擊此處開啟全螢幕簽名</p>
+                                                                                                                        </div>
+                                                                                                                    )}
+                                                                                                                </div>
+                                                                                                                {signatureImg && (
+                                                                                                                    <button onClick={() => { setSignatureImg(null); }} className="mt-2 text-xs text-slate-500 hover:text-red-500"><i className="fas fa-eraser mr-1"></i>清除簽名</button>
+                                                                                                                )}
+                                                                                                            </div>
+                                                                                                        ) : (
+                                                                                                            <SignatureCanvas onSave={setSignatureImg} onClear={() => setSignatureImg(null)} />
+                                                                                                        )}
                                                                                                         <button onClick={async () => {
-                                                                                                            if (isAmlDoc && !hasFundSourcesSelected()) { alert('請先勾選至少一項出資金額來源！'); return; }
                                                                                                             if (shareholderInfo.docConfirmed[doc.id] && !shareholderInfo.docRejected[doc.id]) { alert('此文件已被股務確認，無法重新送出。'); return; }
                                                                                                             if (shareholderInfo.docStatuses[doc.id] && !confirm('此文件已簽核過，確定要重新送出嗎？')) return;
                                                                                                             const data = await handleGenerateDoc(doc.id, { signatureImage: signatureImg, isSigned: true });
@@ -2088,14 +2277,14 @@
                                                                                                             <i className="fas fa-info-circle mr-1"></i>請先下載文件，列印簽名後再上傳
                                                                                                         </div>
                                                                                                         <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                                                                                                            {!isMobile && (
                                                                                                             <button onClick={() => handleGeneratePDF('download', doc.id)} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center shadow-sm">
                                                                                                                 <i className="fas fa-download mr-2"></i>下載 PDF
                                                                                                             </button>
-                                                                                                            {isMobile && (
+                                                                                                            )}
                                                                                                             <button onClick={() => handleGeneratePDF('share', doc.id)} className="flex-1 bg-[#06C755] text-white py-3 rounded-lg font-bold hover:bg-[#05b54d] transition flex items-center justify-center shadow-sm">
                                                                                                                 <i className="fab fa-line mr-2"></i>Line 分享
                                                                                                             </button>
-                                                                                                            )}
                                                                                                             <button onClick={() => document.getElementById(`file-upload-${doc.id}`).click()} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
                                                                                                                 <i className="fas fa-file-upload"></i><span>選擇檔案上傳</span>
                                                                                                             </button>
@@ -2135,14 +2324,14 @@
                                                                                                 <i className="fas fa-info-circle mr-1"></i>請下載文件，蓋大小章後上傳
                                                                                             </div>
                                                                                             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                                                                                                {!isMobile && (
                                                                                                 <button onClick={() => handleGeneratePDF('download', doc.id)} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center shadow-sm">
                                                                                                     <i className="fas fa-download mr-2"></i>下載 PDF
                                                                                                 </button>
-                                                                                                {isMobile && (
+                                                                                                )}
                                                                                                 <button onClick={() => handleGeneratePDF('share', doc.id)} className="flex-1 bg-[#06C755] text-white py-3 rounded-lg font-bold hover:bg-[#05b54d] transition flex items-center justify-center shadow-sm">
                                                                                                     <i className="fab fa-line mr-2"></i>Line 分享
                                                                                                 </button>
-                                                                                                )}
                                                                                                 <button onClick={() => document.getElementById(`file-upload-${doc.id}`).click()} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center gap-2">
                                                                                                     <i className="fas fa-file-upload"></i><span>選擇檔案</span>
                                                                                                 </button>
@@ -2176,14 +2365,14 @@
                                                                                     {isPaperOnly && (
                                                                                         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 space-y-3">
                                                                                             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+                                                                                                {!isMobile && (
                                                                                                 <button onClick={() => handleGeneratePDF('download', doc.id)} className="flex-1 border border-slate-300 text-slate-600 py-3 rounded-lg font-bold hover:bg-slate-50 transition flex items-center justify-center shadow-sm">
                                                                                                     <i className="fas fa-download mr-2"></i>下載 PDF
                                                                                                 </button>
-                                                                                                {isMobile && (
+                                                                                                )}
                                                                                                 <button onClick={() => handleGeneratePDF('share', doc.id)} className="flex-1 bg-[#06C755] text-white py-3 rounded-lg font-bold hover:bg-[#05b54d] transition flex items-center justify-center shadow-sm">
                                                                                                     <i className="fab fa-line mr-2"></i>Line 分享
                                                                                                 </button>
-                                                                                                )}
                                                                                             </div>
                                                                                             {/* 上傳簽名掃描檔 */}
                                                                                             <div className="border-t border-slate-200 pt-3">
@@ -2792,6 +2981,14 @@
                                 )}
                             </div>
                         </div>
+                    )}
+
+                    {/* ★★★ 手機全螢幕橫向簽名 Modal ★★★ */}
+                    {signFullscreen && (
+                        <FullscreenSignatureModal
+                            onConfirm={(dataUrl) => { setSignatureImg(dataUrl); setSignFullscreen(false); }}
+                            onClose={() => setSignFullscreen(false)}
+                        />
                     )}
 
                     <div className="text-center mt-10 text-slate-400 text-sm no-print"
