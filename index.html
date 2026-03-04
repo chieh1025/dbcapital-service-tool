@@ -276,31 +276,48 @@
             const canvasRef = useRef(null);
             const [isDrawing, setIsDrawing] = useState(false);
             const [hasDrawn, setHasDrawn] = useState(false);
+            const pointsRef = useRef([]);
+            const lastVelRef = useRef(0);
+            const lastWidthRef = useRef(0);
+            const dprRef = useRef(1);
 
             useEffect(() => {
+                // 鎖定滾動
+                const scrollY = window.scrollY;
                 document.body.style.overflow = 'hidden';
-                return () => { document.body.style.overflow = ''; };
+                document.body.style.position = 'fixed';
+                document.body.style.top = `-${scrollY}px`;
+                document.body.style.width = '100%';
+                const preventScroll = (e) => { e.preventDefault(); };
+                document.addEventListener('touchmove', preventScroll, { passive: false });
+                return () => {
+                    document.removeEventListener('touchmove', preventScroll);
+                    document.body.style.overflow = '';
+                    document.body.style.position = '';
+                    document.body.style.top = '';
+                    document.body.style.width = '';
+                    window.scrollTo(0, scrollY);
+                };
             }, []);
 
             useEffect(() => {
                 const canvas = canvasRef.current;
                 if (!canvas) return;
-                // 橫向 modal：canvas 寬=視窗高，高=視窗寬（旋轉後）
                 const w = window.innerHeight;
-                const h = window.innerWidth - 56; // 扣除頂部列高度
+                const h = window.innerWidth - 56;
                 const dpr = Math.max(window.devicePixelRatio || 1, 1);
+                dprRef.current = dpr;
                 canvas.style.width = w + 'px';
                 canvas.style.height = h + 'px';
                 canvas.width = w * dpr;
                 canvas.height = h * dpr;
                 const ctx = canvas.getContext('2d');
-                ctx.strokeStyle = '#000';
-                ctx.lineWidth = 2.5 * dpr;
                 ctx.lineCap = 'round';
                 ctx.lineJoin = 'round';
-                // 白底
+                ctx.strokeStyle = '#000';
                 ctx.fillStyle = '#fff';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
+                lastWidthRef.current = 2 * dpr;
             }, []);
 
             const getPos = (e) => {
@@ -308,47 +325,78 @@
                 const rect = canvas.getBoundingClientRect();
                 const clientX = e.clientX ?? e.touches[0].clientX;
                 const clientY = e.clientY ?? e.touches[0].clientY;
-                // 父元素 CSS rotate(90deg)：螢幕座標需轉換為 canvas 座標
-                // 螢幕 Y → canvas X，螢幕 X → canvas Y（反向）
                 return {
                     x: (clientY - rect.top) / rect.height * canvas.width,
                     y: (rect.left + rect.width - clientX) / rect.width * canvas.height,
+                    t: Date.now(),
                 };
             };
 
-            const lastPos = useRef(null);
+            const calcWidth = (velocity) => {
+                const dpr = dprRef.current;
+                const maxW = 3.5 * dpr;
+                const minW = 1 * dpr;
+                return Math.max(minW, maxW / (velocity * 0.003 + 1));
+            };
 
             const startDrawing = (e) => {
                 e.preventDefault();
                 setIsDrawing(true);
                 setHasDrawn(true);
                 const pos = getPos(e);
-                lastPos.current = pos;
+                pointsRef.current = [pos];
+                lastVelRef.current = 0;
+                lastWidthRef.current = 2 * dprRef.current;
+                // 畫一個圓點
                 const ctx = canvasRef.current.getContext('2d');
                 ctx.beginPath();
-                ctx.moveTo(pos.x, pos.y);
+                ctx.fillStyle = '#000';
+                ctx.arc(pos.x, pos.y, lastWidthRef.current / 2, 0, Math.PI * 2);
+                ctx.fill();
             };
 
             const draw = (e) => {
                 if (!isDrawing) return;
                 e.preventDefault();
                 const pos = getPos(e);
+                const pts = pointsRef.current;
+                pts.push(pos);
                 const ctx = canvasRef.current.getContext('2d');
-                ctx.lineTo(pos.x, pos.y);
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.moveTo(pos.x, pos.y);
-                lastPos.current = pos;
+                ctx.strokeStyle = '#000';
+                const len = pts.length;
+                if (len >= 3) {
+                    const p0 = pts[len - 3], p1 = pts[len - 2], p2 = pts[len - 1];
+                    const dt = p2.t - p1.t || 1;
+                    const dist = Math.sqrt((p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2);
+                    const vel = 0.7 * (dist / dt) + 0.3 * lastVelRef.current;
+                    lastVelRef.current = vel;
+                    const newW = calcWidth(vel);
+                    ctx.beginPath();
+                    ctx.moveTo((p0.x + p1.x) / 2, (p0.y + p1.y) / 2);
+                    ctx.lineWidth = (lastWidthRef.current + newW) / 2;
+                    ctx.quadraticCurveTo(p1.x, p1.y, (p1.x + p2.x) / 2, (p1.y + p2.y) / 2);
+                    ctx.stroke();
+                    lastWidthRef.current = newW;
+                } else if (len === 2) {
+                    ctx.beginPath();
+                    ctx.moveTo(pts[0].x, pts[0].y);
+                    ctx.lineWidth = lastWidthRef.current;
+                    ctx.lineTo(pts[1].x, pts[1].y);
+                    ctx.stroke();
+                }
             };
 
-            const stopDrawing = () => { setIsDrawing(false); lastPos.current = null; };
+            const stopDrawing = () => {
+                if (!isDrawing) return;
+                setIsDrawing(false);
+                pointsRef.current = [];
+            };
 
             const clearCanvas = () => {
                 const canvas = canvasRef.current;
                 const ctx = canvas.getContext('2d');
                 ctx.fillStyle = '#fff';
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.beginPath();
                 setHasDrawn(false);
             };
 
@@ -360,39 +408,33 @@
             return (
                 <div className="fixed inset-0 z-50 bg-black">
                     <div style={{
-                        position: 'fixed',
-                        top: 0,
-                        left: 0,
+                        position: 'fixed', top: 0, left: 0,
                         width: window.innerHeight + 'px',
                         height: window.innerWidth + 'px',
                         transformOrigin: 'top left',
                         transform: `rotate(90deg) translateY(-${window.innerWidth}px)`,
-                        display: 'flex',
-                        flexDirection: 'column',
-                        background: '#f8fafc'
+                        display: 'flex', flexDirection: 'column', background: '#f8fafc'
                     }}>
-                        {/* 頂部列 */}
                         <div style={{ height: '56px', flexShrink: 0 }} className="bg-slate-800 flex items-center justify-between px-4">
-                            <button onClick={clearCanvas} className="text-white text-sm font-bold px-4 py-2 bg-slate-600 rounded-lg hover:bg-slate-500 transition">
-                                <i className="fas fa-eraser mr-1"></i>清除
+                            <button onClick={onClose} className="text-white text-sm font-bold px-4 py-2 bg-slate-600 rounded-lg hover:bg-slate-500 transition">
+                                <i className="fas fa-times mr-1"></i>取消
                             </button>
                             <span className="text-white font-bold text-sm">請在此簽名</span>
-                            <button onClick={handleConfirm} disabled={!hasDrawn} className="text-white text-sm font-bold px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40 transition">
-                                <i className="fas fa-check mr-1"></i>確認
-                            </button>
+                            <div className="flex gap-2">
+                                <button onClick={clearCanvas} className="text-white text-sm font-bold px-4 py-2 bg-slate-600 rounded-lg hover:bg-slate-500 transition">
+                                    <i className="fas fa-eraser mr-1"></i>清除
+                                </button>
+                                <button onClick={handleConfirm} disabled={!hasDrawn} className="text-white text-sm font-bold px-4 py-2 bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-40 transition">
+                                    <i className="fas fa-check mr-1"></i>確認
+                                </button>
+                            </div>
                         </div>
-                        {/* Canvas 佔滿剩餘 */}
                         <div style={{ flex: 1 }}>
                             <canvas
                                 ref={canvasRef}
                                 style={{ display: 'block', touchAction: 'none', cursor: 'crosshair' }}
-                                onMouseDown={startDrawing}
-                                onMouseMove={draw}
-                                onMouseUp={stopDrawing}
-                                onMouseLeave={stopDrawing}
-                                onTouchStart={startDrawing}
-                                onTouchMove={draw}
-                                onTouchEnd={stopDrawing}
+                                onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
+                                onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
                             />
                         </div>
                     </div>
