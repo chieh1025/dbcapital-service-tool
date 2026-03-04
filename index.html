@@ -308,32 +308,40 @@
                 const rect = canvas.getBoundingClientRect();
                 const clientX = e.clientX ?? e.touches[0].clientX;
                 const clientY = e.clientY ?? e.touches[0].clientY;
+                // 父元素 CSS rotate(90deg)：螢幕座標需轉換為 canvas 座標
+                // 螢幕 Y → canvas X，螢幕 X → canvas Y（反向）
                 return {
-                    x: (clientX - rect.left) * (canvas.width / rect.width),
-                    y: (clientY - rect.top) * (canvas.height / rect.height),
+                    x: (clientY - rect.top) / rect.height * canvas.width,
+                    y: (rect.left + rect.width - clientX) / rect.width * canvas.height,
                 };
             };
+
+            const lastPos = useRef(null);
 
             const startDrawing = (e) => {
                 e.preventDefault();
                 setIsDrawing(true);
                 setHasDrawn(true);
-                const { x, y } = getPos(e);
+                const pos = getPos(e);
+                lastPos.current = pos;
                 const ctx = canvasRef.current.getContext('2d');
                 ctx.beginPath();
-                ctx.moveTo(x, y);
+                ctx.moveTo(pos.x, pos.y);
             };
 
             const draw = (e) => {
                 if (!isDrawing) return;
                 e.preventDefault();
-                const { x, y } = getPos(e);
+                const pos = getPos(e);
                 const ctx = canvasRef.current.getContext('2d');
-                ctx.lineTo(x, y);
+                ctx.lineTo(pos.x, pos.y);
                 ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(pos.x, pos.y);
+                lastPos.current = pos;
             };
 
-            const stopDrawing = () => { setIsDrawing(false); };
+            const stopDrawing = () => { setIsDrawing(false); lastPos.current = null; };
 
             const clearCanvas = () => {
                 const canvas = canvasRef.current;
