@@ -520,6 +520,7 @@
                 if (s.additionalShares != null) setAdditionalShares(s.additionalShares);
                 if (s.isSubscriptionConfirmed) setIsSubscriptionConfirmed(true);
                 if (s.fundSources) setFundSources(s.fundSources);
+                if (s.lockedSubscription) setLockedSubscription(true);
                 setIsVerified(true);
                 setActiveTab('capital_increase');
                 startHeartbeat(s.shareholderId, s.name || '', s.type || 'natural');
@@ -562,6 +563,8 @@
                     data.fundSources.split(',').forEach(s => { if (s.trim()) restored[s.trim()] = true; });
                     setFundSources(restored);
                 }
+                // ★★★ 鎖定狀態 ★★★
+                setLockedSubscription(!!data.lockedSubscription);
                 const localTarget = config.shareholderOptions.find(o => o.id === data.shareholderId);
                 const resolvedType = data.type || (localTarget ? localTarget.type : 'natural') || 'natural';
                 if (data.type) setType(data.type);
@@ -735,6 +738,7 @@
             const [votes, setVotes] = useState({}); // { proposal_id: 'agree'|'oppose'|'abstain' }
             const [isVoteSubmitted, setIsVoteSubmitted] = useState(false);
             const [isSubscriptionConfirmed, setIsSubscriptionConfirmed] = useState(false);
+            const [lockedSubscription, setLockedSubscription] = useState(false);
             const [viewingDoc, setViewingDoc] = useState(null); // null | doc id
 
             // ★★★ LIFF / LINE 相關狀態 ★★★
@@ -802,12 +806,13 @@
                     localStorage.setItem(SESSION_KEY, JSON.stringify({
                         shareholderId, name, type, shareholderInfo, sharesMap,
                         willingToOffset, additionalShares, isSubscriptionConfirmed, fundSources,
+                        lockedSubscription,
                         savedAt: Date.now(),
                     }));
                     // Cookie fallback（LINE in-app browser 可能清 localStorage 但保留 cookie）
                     document.cookie = `dbcapital_sid=${shareholderId}; max-age=1800; path=/; SameSite=Lax`;
                 }
-            }, [isVerified, shareholderId, name, type, shareholderInfo, sharesMap, willingToOffset, additionalShares, isSubscriptionConfirmed]);
+            }, [isVerified, shareholderId, name, type, shareholderInfo, sharesMap, willingToOffset, additionalShares, isSubscriptionConfirmed, lockedSubscription]);
 
             // ★★★ 30 分鐘無操作自動登出 ★★★
             const SESSION_TIMEOUT = 30 * 60 * 1000;
@@ -981,6 +986,8 @@
                                 setFundSources(restored);
                             }
 
+                            // ★★★ 鎖定狀態 ★★★
+                            setLockedSubscription(!!data.lockedSubscription);
 
                             // ★ LINE 綁定成功提示
                             const needFundSourceReminder = data.willParticipate === '是' && !data.fundSources;
@@ -1072,8 +1079,10 @@
 
                 const totalGrossDividend = dividendResults.reduce((sum, item) => sum + item.gross, 0);
 
+                const votingShares = Number(sharesMap['voting_shares']) || 0;
+
                 return {
-                    totalShares, dividendResults, totalNetDividend, totalGrossDividend, maxOffsetSharesPossible,
+                    totalShares, votingShares, dividendResults, totalNetDividend, totalGrossDividend, maxOffsetSharesPossible,
                     finalOffsetShares, finalOffsetCost, extraShares, extraCost,
                     totalNewShares: extraShares, // All shares are now "extra/additional" since we removed the separate offset input
                     totalCost: extraCost,        // Total cost is just the cost of those shares
@@ -1119,6 +1128,7 @@
                         healthInsuranceDeduction: totalHI,
                         extraCost: result?.extraCost || 0,
                         totalShares: result?.totalShares || 0,
+                        votingShares: result?.votingShares || 0,
                         totalNewShares: result?.totalNewShares || 0,
                         totalCost: result?.totalCost || 0,
                         subscriptionPrice: config.subscriptionPrice || 160000,
@@ -1185,6 +1195,7 @@
                         healthInsuranceDeduction: totalHI,
                         extraCost: result?.extraCost || 0,
                         totalShares: result?.totalShares || 0,
+                        votingShares: result?.votingShares || 0,
                         totalNewShares: result?.totalNewShares || 0,
                         totalCost: result?.totalCost || 0,
                         subscriptionPrice: config.subscriptionPrice || 160000,
@@ -1543,6 +1554,7 @@
             // ★★★ Feature: Auto-Save Subscription Data ★★★
             const handleSaveSubscription = async () => {
                 if (!shareholderId || !result || !config.n8nApiUrl) return;
+                if (lockedSubscription) { alert('您的認購已被鎖定，無法變更認購資料。如有疑問請聯絡股務部門。'); return; }
                 setIsProcessing(true);
                 try {
                     const totalHI = result.dividendResults.reduce((sum, d) => sum + d.hi, 0);
@@ -1574,7 +1586,8 @@
                             alert(`已記錄您不參與增資${nth}，預計將領回股利淨額。`);
                         }
                     } else {
-                        alert('儲存失敗：' + (data.error || '未知錯誤'));
+                        if (data.lockedSubscription) setLockedSubscription(true);
+                        alert('儲存失敗：' + (data.message || data.error || '未知錯誤'));
                     }
                 } catch (e) {
                     console.error("Save failed", e);
@@ -2062,9 +2075,10 @@
                                                             <div className="text-3xl font-bold text-red-600">
                                                                 實際應收付金額： <span className="text-green-600">+${formatInput(result.totalNetDividend)}</span> (領回)
                                                             </div>
-                                                            <button onClick={handleSaveSubscription} disabled={isProcessing || config.capitalIncreaseEnabled !== 'true'} className="mt-6 w-full bg-red-600 text-white py-3 rounded-lg font-bold hover:bg-red-700 shadow-md disabled:opacity-50 transition">
+                                                            <button onClick={handleSaveSubscription} disabled={isProcessing || lockedSubscription || config.capitalIncreaseEnabled !== 'true'} className="mt-6 w-full bg-red-600 text-white py-3 rounded-lg font-bold hover:bg-red-700 shadow-md disabled:opacity-50 transition">
                                                                 {isProcessing ? <><i className="fas fa-spinner fa-spin mr-2"></i>儲存中...</> : <><i className="fas fa-check mr-2"></i>確認不參與增資</>}
                                                             </button>
+                                                            {lockedSubscription && <div className="mt-2 text-center text-sm text-red-500 font-medium"><i className="fas fa-lock mr-1"></i>帳戶已鎖定，欲更改請洽股務</div>}
                                                         </div>
                                                     ) : (
                                                         <div className="mt-4 text-left fade-in">
@@ -2115,9 +2129,10 @@
                                                                         <span>實際應退回金額： <span className="text-green-600">+${formatInput(result.totalNetDividend - result.extraCost)}</span> (領回)</span>
                                                                     )}
                                                                 </div>
-                                                                <button onClick={handleSaveSubscription} disabled={isProcessing || !additionalShares || !hasFundSourcesSelected() || config.capitalIncreaseEnabled !== 'true'} className="mt-6 w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md disabled:opacity-50 transition">
+                                                                <button onClick={handleSaveSubscription} disabled={isProcessing || lockedSubscription || !additionalShares || !hasFundSourcesSelected() || config.capitalIncreaseEnabled !== 'true'} className="mt-6 w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 shadow-md disabled:opacity-50 transition">
                                                                     {isProcessing ? <><i className="fas fa-spinner fa-spin mr-2"></i>儲存中...</> : <><i className="fas fa-paper-plane mr-2"></i>確認認購送出</>}
                                                                 </button>
+                                                                {lockedSubscription && <div className="mt-2 text-center text-sm text-red-500 font-medium"><i className="fas fa-lock mr-1"></i>帳戶已鎖定，欲更改請洽股務</div>}
                                                             </div>
                                                         </div>
                                                     )}
@@ -2222,8 +2237,8 @@
                                                                     } else {
                                                                         setSignMethod('paper');
                                                                     }
-                                                                    // ★ B1: 展開時自動載入預覽
-                                                                    if (!previewHtmlMap[doc.id]) {
+                                                                    // ★ B1: 展開時自動載入預覽（已簽核且有 R2 檔案 → 直接用 R2 PDF）
+                                                                    if (!previewHtmlMap[doc.id] && !shareholderInfo.docFiles[doc.id]) {
                                                                         handlePreviewDoc(doc.id);
                                                                     }
                                                                 }
@@ -2525,6 +2540,13 @@
                                                                                             <i className="fas fa-spinner fa-spin text-3xl text-blue-400 mr-3"></i>
                                                                                             <span className="text-slate-500">載入預覽中...</span>
                                                                                         </div>
+                                                                                    ) : shareholderInfo.docFiles[doc.id] ? (
+                                                                                        <iframe
+                                                                                            src={'https://dbcapital-service-tool.chieh1025.workers.dev/' + encodeURIComponent(shareholderInfo.docFiles[doc.id])}
+                                                                                            className="w-full border-0"
+                                                                                            style={{ height: '85vh' }}
+                                                                                            title={doc.title + '（已簽核版）'}
+                                                                                        />
                                                                                     ) : previewHtmlMap[doc.id] ? (
                                                                                         <iframe
                                                                                             srcDoc={previewHtmlMap[doc.id]}
@@ -3031,6 +3053,12 @@
                                         <i className="fas fa-spinner fa-spin text-3xl text-blue-400 mr-3"></i>
                                         <span className="text-slate-500">載入預覽中...</span>
                                     </div>
+                                ) : shareholderInfo.docFiles[previewModalDocId] ? (
+                                    <iframe
+                                        src={'https://dbcapital-service-tool.chieh1025.workers.dev/' + encodeURIComponent(shareholderInfo.docFiles[previewModalDocId])}
+                                        className="w-full h-full border-0"
+                                        title="文件預覽（已簽核版）"
+                                    />
                                 ) : previewHtmlMap[previewModalDocId] ? (
                                     <iframe
                                         srcDoc={previewHtmlMap[previewModalDocId]}
